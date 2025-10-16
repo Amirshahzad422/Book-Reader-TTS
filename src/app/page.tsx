@@ -58,11 +58,21 @@ export default function Home() {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
       if (errorMessage.includes('API key')) {
-        alert('OpenAI API key not configured. Please add your OPENAI_API_KEY to the .env.local file.');
-      } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
-        alert('OpenAI API quota exceeded. Please check your OpenAI account or try again later.');
+        alert('❌ OpenAI API Key Missing\n\nPlease add your OPENAI_API_KEY to the .env.local file and restart the server.');
+      } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit') || errorMessage.includes('All OpenAI API keys')) {
+        alert(`🚨 All API Keys Quota Exceeded\n\n` +
+              `All your OpenAI API keys have hit their usage limits.\n\n` +
+              `Quick Solutions:\n` +
+              `• Add billing to your OpenAI accounts at platform.openai.com/account/billing\n` +
+              `• Add $5-10 to each account (very affordable)\n` +
+              `• Wait 1 hour if on free tier\n` +
+              `• Try with a smaller PDF (1-2 pages)\n\n` +
+              `Your app supports multiple API keys - just add billing and you're back online!\n\n` +
+              `Cost: ~$0.25 per PDF conversion (very cheap!)`);
+      } else if (errorMessage.includes('billing')) {
+        alert('💳 OpenAI Billing Issue\n\nPlease check your payment method at platform.openai.com/account/billing');
       } else {
-        alert(`Failed to convert PDF to audio: ${errorMessage}`);
+        alert(`❌ Conversion Failed\n\n${errorMessage}\n\nPlease try again or check your internet connection.`);
       }
     } finally {
       setIsConverting(false);

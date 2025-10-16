@@ -71,18 +71,24 @@ async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   }
 }
 
+// Multiple API keys for rotation (add your keys here)
+const API_KEYS = [
+  process.env.OPENAI_API_KEY,
+  process.env.OPENAI_API_KEY_2,
+  process.env.OPENAI_API_KEY_3,
+].filter(Boolean); // Remove undefined keys
+
 export async function POST(request: NextRequest) {
   try {
-    // Initialize OpenAI client with API key validation
-    if (!process.env.OPENAI_API_KEY) {
+    // Check if we have any API keys
+    if (API_KEYS.length === 0) {
       return NextResponse.json({ 
-        error: 'OpenAI API key not configured. Please add your OPENAI_API_KEY to environment variables.' 
+        error: 'No OpenAI API keys configured. Please add OPENAI_API_KEY to environment variables.' 
       }, { status: 500 });
     }
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+    console.log(`Available API keys: ${API_KEYS.length}`);
+
     const formData = await request.formData();
     const file = formData.get('pdf') as File;
 
@@ -90,87 +96,140 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No PDF file provided' }, { status: 400 });
     }
 
-    // Convert File to ArrayBuffer
-    const arrayBuffer = await file.arrayBuffer();
-
-    // Extract text from PDF using PDF.js
-    const rawText = await extractTextFromPDF(arrayBuffer);
-
-    if (!rawText || rawText.trim().length < 10) {
-      return NextResponse.json({ error: 'Could not extract readable text from PDF' }, { status: 400 });
-    }
-
-    // Clean and process the text
-    let processedText = cleanAndProcessText(rawText);
+    // Try each API key until one works
+    let lastError = null;
     
-    // Optimize for speech synthesis
-    processedText = optimizeTextForSpeech(processedText);
+    for (let i = 0; i < API_KEYS.length; i++) {
+      const apiKey = API_KEYS[i];
+      console.log(`Trying API key ${i + 1}/${API_KEYS.length}`);
+      
+      try {
+        const openai = new OpenAI({
+          apiKey: apiKey,
+        });
 
-    // Truncate text if too long (OpenAI TTS has a 4096 character limit)
-    if (processedText.length > 4000) {
-      // Try to cut at a sentence boundary
-      const truncated = processedText.substring(0, 4000);
-      const lastSentence = truncated.lastIndexOf('.');
-      if (lastSentence > 3000) {
-        processedText = truncated.substring(0, lastSentence + 1);
-      } else {
-        processedText = truncated + '...';
+        // Convert File to ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
+
+        // Extract text from PDF
+        const rawText = await extractTextFromPDF(arrayBuffer);
+
+        if (!rawText || rawText.trim().length < 10) {
+          return NextResponse.json({ error: 'Could not extract readable text from PDF' }, { status: 400 });
+        }
+
+        // Clean and process the text
+        let processedText = cleanAndProcessText(rawText);
+        
+        // Optimize for speech synthesis
+        processedText = optimizeTextForSpeech(processedText);
+
+        // Truncate text if too long (OpenAI TTS has a 4096 character limit)
+        if (processedText.length > 4000) {
+          // Try to cut at a sentence boundary
+          const truncated = processedText.substring(0, 4000);
+          const lastSentence = truncated.lastIndexOf('.');
+          if (lastSentence > 3000) {
+            processedText = truncated.substring(0, lastSentence + 1);
+          } else {
+            processedText = truncated + '...';
+          }
+        }
+
+        console.log(`Processing text with API key ${i + 1}: ${processedText.length} characters`);
+
+        // Generate speech using OpenAI TTS
+        const mp3 = await openai.audio.speech.create({
+          model: "tts-1-hd",
+          voice: "fable",
+          input: processedText,
+          speed: 0.85,
+          response_format: "mp3",
+        });
+
+        // Convert to buffer
+        const audioBuffer = Buffer.from(await mp3.arrayBuffer());
+
+        console.log(`✅ Success with API key ${i + 1}! Generated audio: ${audioBuffer.length} bytes`);
+
+        // Return audio file
+        return new NextResponse(audioBuffer, {
+          headers: {
+            'Content-Type': 'audio/mpeg',
+            'Content-Length': audioBuffer.length.toString(),
+            'Content-Disposition': 'attachment; filename="converted-audio.mp3"',
+            'Cache-Control': 'no-cache',
+          },
+        });
+
+      } catch (keyError) {
+        console.error(`❌ API key ${i + 1} failed:`, keyError);
+        lastError = keyError;
+        
+        // If this is a quota error, try the next key
+        if (keyError instanceof Error && 
+            (keyError.message.includes('quota') || 
+             keyError.message.includes('429') || 
+             keyError.message.includes('insufficient_quota'))) {
+          console.log(`API key ${i + 1} quota exceeded, trying next key...`);
+          continue;
+        }
+        
+        // If it's not a quota error, break and return the error
+        throw keyError;
       }
     }
 
-    console.log(`Processing text: ${processedText.length} characters`);
-
-    // Generate speech using OpenAI TTS with ultra-realistic human voice
-    // Available voices: alloy, echo, fable, onyx, nova, shimmer
-    // onyx: Deep, warm male voice (best for audiobooks)
-    // fable: British accent, great for storytelling
-    // echo: Clear, professional male voice
-    const mp3 = await openai.audio.speech.create({
-      model: "tts-1-hd", // Highest quality model for maximum realism and emotion
-      voice: "fable", // British narrator voice - excellent for professional audiobooks
-      input: processedText,
-      speed: 0.85, // Slower, more deliberate pace for maximum clarity and emotion
-      response_format: "mp3", // High-quality MP3 format
-    });
-
-    // Convert to buffer
-    const audioBuffer = Buffer.from(await mp3.arrayBuffer());
-
-    console.log(`Generated audio: ${audioBuffer.length} bytes`);
-
-    // Return audio file
-    return new NextResponse(audioBuffer, {
-      headers: {
-        'Content-Type': 'audio/mpeg',
-        'Content-Length': audioBuffer.length.toString(),
-        'Content-Disposition': 'attachment; filename="converted-audio.mp3"',
-        'Cache-Control': 'no-cache',
-      },
-    });
+    // If we get here, all API keys failed
+    console.error('❌ All API keys failed');
+    throw lastError || new Error('All API keys have exceeded their quota');
 
   } catch (error) {
     console.error('Error converting PDF to audio:', error);
     
+    // Enhanced OpenAI error handling
     if (error instanceof Error) {
-      if (error.message.includes('API key')) {
+      const errorMessage = error.message.toLowerCase();
+      
+      // API Key issues
+      if (errorMessage.includes('api key') || errorMessage.includes('unauthorized')) {
         return NextResponse.json({ 
-          error: 'OpenAI API key not configured. Please add your OPENAI_API_KEY to environment variables.' 
-        }, { status: 500 });
+          error: 'OpenAI API key not configured or invalid. Please check your OPENAI_API_KEY in environment variables.' 
+        }, { status: 401 });
       }
-      if (error.message.includes('quota') || error.message.includes('rate limit')) {
+      
+      // Quota and rate limiting (429 errors)
+      if (errorMessage.includes('quota') || 
+          errorMessage.includes('rate limit') || 
+          errorMessage.includes('too many requests') ||
+          errorMessage.includes('insufficient_quota') ||
+          errorMessage.includes('all api keys have exceeded') ||
+          errorMessage.includes('429')) {
         return NextResponse.json({ 
-          error: 'OpenAI API quota exceeded or rate limited. Please try again later.' 
+          error: 'All OpenAI API keys have exceeded their quota. Solutions: 1) Add billing to your OpenAI accounts at platform.openai.com/account/billing 2) Wait for quota reset 3) Try again later 4) Use smaller PDFs to reduce usage' 
         }, { status: 429 });
       }
-      if (error.message.includes('billing')) {
+      
+      // Billing issues (402 errors)
+      if (errorMessage.includes('billing') || 
+          errorMessage.includes('payment') || 
+          errorMessage.includes('402')) {
         return NextResponse.json({ 
-          error: 'OpenAI API billing issue. Please check your OpenAI account.' 
+          error: 'OpenAI API billing issue. Please add a payment method at platform.openai.com/account/billing' 
         }, { status: 402 });
+      }
+      
+      // Model or service issues
+      if (errorMessage.includes('model') || errorMessage.includes('service')) {
+        return NextResponse.json({ 
+          error: 'OpenAI service temporarily unavailable. Please try again in a few minutes.' 
+        }, { status: 503 });
       }
     }
 
+    // Generic error
     return NextResponse.json({ 
-      error: 'Failed to convert PDF to audio. Please try again.' 
+      error: 'Failed to convert PDF to audio. Please check your internet connection and try again.' 
     }, { status: 500 });
   }
 }
