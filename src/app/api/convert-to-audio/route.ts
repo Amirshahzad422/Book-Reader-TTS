@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { cleanAndProcessText, optimizeTextForSpeech } from '@/lib/textProcessing';
 
+// Define the OpenAI voice type
+type OpenAIVoice = 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse' | 'marin' | 'cedar' | 'fable' | 'onyx' | 'nova';
+
 // Dynamic PDF text extraction using pdf-parse
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
   try {
@@ -91,10 +94,17 @@ export async function POST(request: NextRequest) {
 
     const formData = await request.formData();
     const file = formData.get('pdf') as File;
+    const selectedVoice = formData.get('voice') as string || 'fable'; // Default to fable
 
     if (!file) {
       return NextResponse.json({ error: 'No PDF file provided' }, { status: 400 });
     }
+
+    // Validate voice option
+    const validVoices: OpenAIVoice[] = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse', 'marin', 'cedar'];
+    const voice = validVoices.includes(selectedVoice as OpenAIVoice) ? selectedVoice : 'fable';
+    
+    console.log(`Using voice: ${voice}`);
 
     // Try each API key until one works
     let lastError = null;
@@ -138,12 +148,12 @@ export async function POST(request: NextRequest) {
 
         console.log(`Processing text with API key ${i + 1}: ${processedText.length} characters`);
 
-        // Generate speech using OpenAI TTS
+        // Generate speech using OpenAI TTS with ultra-realistic human settings
         const mp3 = await openai.audio.speech.create({
-          model: "tts-1-hd",
-          voice: "fable",
+          model: "tts-1-hd", // Highest quality model for maximum realism
+          voice: voice as OpenAIVoice, // Use selected voice
           input: processedText,
-          speed: 0.85,
+          speed: 0.75, // Much slower for natural, human-like pacing
           response_format: "mp3",
         });
 

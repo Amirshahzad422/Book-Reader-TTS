@@ -4,16 +4,25 @@ import { useState } from "react";
 import PDFUploader from "@/components/PDFUploader";
 import ConversionLoader from "@/components/ConversionLoader";
 import AudioPlayer from "@/components/AudioPlayer";
+import VoiceSelector from "@/components/VoiceSelector";
 
 export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isConverting, setIsConverting] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [conversionProgress, setConversionProgress] = useState(0);
+  const [selectedVoice, setSelectedVoice] = useState("fable"); // Default to British narrator
 
   const handleFileUpload = (file: File) => {
     setUploadedFile(file);
     setAudioUrl(null);
+  };
+
+  const handleStartOver = () => {
+    setUploadedFile(null);
+    setAudioUrl(null);
+    setIsConverting(false);
+    setConversionProgress(0);
   };
 
   const handleConvertToAudio = async () => {
@@ -36,6 +45,7 @@ export default function Home() {
 
       const formData = new FormData();
       formData.append('pdf', uploadedFile);
+      formData.append('voice', selectedVoice);
 
       const response = await fetch('/api/convert-to-audio', {
         method: 'POST',
@@ -98,17 +108,30 @@ export default function Home() {
           )}
 
           {uploadedFile && !isConverting && !audioUrl && (
-            <div className="text-center space-y-6">
-              <div className="bg-card p-6 rounded-lg border">
-                <h3 className="text-lg font-semibold mb-2">File Ready</h3>
-                <p className="text-muted-foreground mb-4">
-                  {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
-                </p>
+            <div className="space-y-6">
+              {/* File Info */}
+              <div className="text-center">
+                <div className="bg-card p-6 rounded-lg border">
+                  <h3 className="text-lg font-semibold mb-2">File Ready</h3>
+                  <p className="text-muted-foreground mb-4">
+                    {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                </div>
+              </div>
+
+              {/* Voice Selection */}
+              <VoiceSelector 
+                selectedVoice={selectedVoice}
+                onVoiceChange={setSelectedVoice}
+              />
+
+              {/* Convert Button */}
+              <div className="text-center">
                 <button
                   onClick={handleConvertToAudio}
-                  className="bg-primary text-primary-foreground px-6 py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                  className="bg-primary text-primary-foreground px-8 py-4 rounded-lg font-medium hover:bg-primary/90 transition-colors text-lg"
                 >
-                  Convert to Audio with AI Voice
+                  Convert to Audio with {selectedVoice.charAt(0).toUpperCase() + selectedVoice.slice(1)} Voice
                 </button>
               </div>
             </div>
@@ -119,7 +142,19 @@ export default function Home() {
           )}
 
           {audioUrl && (
-            <AudioPlayer audioUrl={audioUrl} fileName={uploadedFile?.name || "Converted Audio"} />
+            <div className="space-y-6">
+              <AudioPlayer audioUrl={audioUrl} fileName={uploadedFile?.name || "Converted Audio"} />
+              
+              {/* Start Over Button */}
+              <div className="text-center">
+                <button
+                  onClick={handleStartOver}
+                  className="bg-secondary text-secondary-foreground px-6 py-3 rounded-lg font-medium hover:bg-secondary/90 transition-colors"
+                >
+                  Convert Another PDF
+                </button>
+              </div>
+            </div>
           )}
         </div>
       </div>
