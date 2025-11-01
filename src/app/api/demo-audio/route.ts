@@ -32,10 +32,12 @@ export async function POST(request: NextRequest) {
 
     console.log('Demo audio generated successfully');
 
-    return new NextResponse(audioBuffer, {
+    // Return as Uint8Array
+    const uint8 = new Uint8Array(audioBuffer);
+    return new NextResponse(uint8, {
       headers: {
         'Content-Type': 'audio/wav',
-        'Content-Length': audioBuffer.byteLength.toString(),
+        'Content-Length': uint8.byteLength.toString(),
         'Content-Disposition': 'attachment; filename="demo-audio.wav"',
         'Cache-Control': 'no-cache',
       },

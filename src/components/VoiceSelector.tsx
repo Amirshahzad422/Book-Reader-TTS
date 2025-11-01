@@ -1,75 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { FaPlay, FaPause, FaVolumeUp } from "react-icons/fa";
 import { Button } from "@/components/ui/button";
-
-export interface Voice {
-  id: string;
-  name: string;
-  description: string;
-  gender: string;
-  accent: string;
-  personality: string;
-  color: string;
-}
-
-const AVAILABLE_VOICES: Voice[] = [
-  {
-    id: "alloy",
-    name: "Alloy",
-    description: "Neutral and versatile voice, great for any content",
-    gender: "Neutral",
-    accent: "American",
-    personality: "Professional, Clear",
-    color: "bg-blue-500"
-  },
-  {
-    id: "echo",
-    name: "Echo",
-    description: "Clear male voice, perfect for professional content",
-    gender: "Male",
-    accent: "American", 
-    personality: "Authoritative, Confident",
-    color: "bg-green-500"
-  },
-  {
-    id: "fable",
-    name: "Fable",
-    description: "British narrator voice, excellent for storytelling",
-    gender: "Male",
-    accent: "British",
-    personality: "Sophisticated, Engaging",
-    color: "bg-purple-500"
-  },
-  {
-    id: "onyx",
-    name: "Onyx",
-    description: "Deep, warm male voice, ideal for audiobooks",
-    gender: "Male",
-    accent: "American",
-    personality: "Deep, Warm, Emotional",
-    color: "bg-gray-800"
-  },
-  {
-    id: "nova",
-    name: "Nova",
-    description: "Young adult female voice, friendly and approachable",
-    gender: "Female",
-    accent: "American",
-    personality: "Friendly, Energetic",
-    color: "bg-pink-500"
-  },
-  {
-    id: "shimmer",
-    name: "Shimmer",
-    description: "Soft, whispery female voice, calming and gentle",
-    gender: "Female",
-    accent: "American",
-    personality: "Soft, Gentle, Calming",
-    color: "bg-indigo-500"
-  }
-];
+import { AVAILABLE_VOICES, type Voice } from "@/lib/voiceDefinitions";
 
 interface VoiceSelectorProps {
   selectedVoice: string;
@@ -78,53 +12,50 @@ interface VoiceSelectorProps {
 
 export default function VoiceSelector({ selectedVoice, onVoiceChange }: VoiceSelectorProps) {
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const playVoicePreview = async (voiceId: string) => {
+    // If clicking on the same voice, stop it
     if (playingVoice === voiceId) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current = null;
+      }
       setPlayingVoice(null);
       return;
+    }
+
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      audioRef.current = null;
     }
 
     setPlayingVoice(voiceId);
     
     try {
-      // Create a sample text for voice preview
-      const sampleText = "Hello! This is how I sound. I'm perfect for converting your PDFs into natural, engaging audio.";
+      // Use pre-generated voice preview from /public/voice-previews
+      const audio = new Audio(`/voice-previews/${voiceId}.mp3`);
+      audioRef.current = audio;
       
-      const response = await fetch('/api/voice-preview', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: sampleText,
-          voice: voiceId
-        }),
-      });
-
-      if (response.ok) {
-        const audioBlob = await response.blob();
-        const audioUrl = URL.createObjectURL(audioBlob);
-        const audio = new Audio(audioUrl);
-        
-        audio.onended = () => {
-          setPlayingVoice(null);
-          URL.revokeObjectURL(audioUrl);
-        };
-        
-        audio.onerror = () => {
-          setPlayingVoice(null);
-          URL.revokeObjectURL(audioUrl);
-        };
-        
-        await audio.play();
-      } else {
-        console.error('Failed to generate voice preview');
+      audio.onended = () => {
         setPlayingVoice(null);
-      }
+        audioRef.current = null;
+      };
+      
+      audio.onerror = () => {
+        console.error('Failed to play voice preview');
+        setPlayingVoice(null);
+        audioRef.current = null;
+      };
+      
+      await audio.play();
     } catch (error) {
       console.error('Error playing voice preview:', error);
       setPlayingVoice(null);
+      audioRef.current = null;
     }
   };
 
@@ -187,12 +118,11 @@ export default function VoiceSelector({ selectedVoice, onVoiceChange }: VoiceSel
                   e.stopPropagation();
                   playVoicePreview(voice.id);
                 }}
-                disabled={playingVoice !== null && playingVoice !== voice.id}
               >
                 {playingVoice === voice.id ? (
                   <>
                     <FaPause className="mr-2 w-3 h-3" />
-                    Playing...
+                    Stop
                   </>
                 ) : (
                   <>
@@ -205,7 +135,7 @@ export default function VoiceSelector({ selectedVoice, onVoiceChange }: VoiceSel
               {/* Selected Indicator */}
               {selectedVoice === voice.id && (
                 <div className="absolute inset-0 rounded-lg border-2 border-primary pointer-events-none">
-                  <div className="absolute top-2 left-2 bg-primary text-primary-foreground text-xs px-2 py-1 rounded">
+                  <div className="absolute top-2 left-1/3 bg-primary text-primary-foreground text-xs px-2 py-1 rounded">
                     Selected
                   </div>
                 </div>
@@ -218,11 +148,18 @@ export default function VoiceSelector({ selectedVoice, onVoiceChange }: VoiceSel
         <div className="mt-6 p-4 bg-muted/50 rounded-lg">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-medium">
-                Selected Voice: {AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.name}
+              <h4 className="font-medium flex items-center gap-2">
+                🎤 Selected Voice: {AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.name}
+                <span className={`px-2 py-1 text-xs rounded ${AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.gender === 'Male' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' : 'bg-pink-100 dark:bg-pink-900 text-pink-800 dark:text-pink-200'}`}>
+                  {AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.gender}
+                </span>
               </h4>
               <p className="text-sm text-muted-foreground">
                 {AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.description}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                🌍 Accent: {AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.accent} • 
+                💭 Style: {AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.personality}
               </p>
             </div>
             <div className={`w-8 h-8 rounded-full ${AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.color}`}></div>
