@@ -5,9 +5,12 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Await params in Next.js 15
+    const { id } = await params;
+    
     // Check authentication
     const session = await getServerSession(authOptions);
     if (!session?.user?.id || !session?.user?.email) {
@@ -35,7 +38,7 @@ export async function DELETE(
       
       userId = dbUser.id;
     }
-    const conversionId = params.id;
+    const conversionId = id;
 
     // Fetch conversion to verify ownership and get file paths
     const { data: conversion, error: fetchError } = await supabaseAdmin!
@@ -43,7 +46,7 @@ export async function DELETE(
       .select('pdf_path, audio_path')
       .eq('id', conversionId)
       .eq('user_id', userId)
-      .single();
+      .single() as { data: { pdf_path: string | null; audio_path: string | null } | null; error: any };
 
     if (fetchError || !conversion) {
       return NextResponse.json({ error: 'Conversion not found' }, { status: 404 });

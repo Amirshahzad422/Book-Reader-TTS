@@ -40,3 +40,23 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# test files
+test-audio.mp3
+*.pdf
+!public/**/*.pdf
+
+# SQL files (if they contain sensitive data, but schema files are usually fine)
+# Uncomment if you don't want to commit SQL files:
+# *.sql
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.DS_Store
