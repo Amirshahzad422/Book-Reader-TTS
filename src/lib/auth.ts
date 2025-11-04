@@ -25,9 +25,9 @@ export const authOptions: NextAuthOptions = {
         params: {
           prompt: "consent",
           access_type: "offline",
-          response_type: "code"
-        }
-      }
+          response_type: "code",
+        },
+      },
     }),
     CredentialsProvider({
       name: "credentials",
@@ -43,17 +43,22 @@ export const authOptions: NextAuthOptions = {
 
         // If Supabase is not configured, return null (user needs to configure it)
         if (!supabase) {
-          console.error('Supabase not configured. Please set up Supabase credentials in .env.local');
+          console.error(
+            "Supabase not configured. Please set up Supabase credentials in .env.local"
+          );
           return null;
         }
 
         // Check user in Supabase
-        const { data: user, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('email', credentials.email)
-          .single() as { data: User & { email_verified?: boolean } | null; error: any };
-        
+        const { data: user, error } = (await supabase
+          .from("users")
+          .select("*")
+          .eq("email", credentials.email)
+          .single()) as {
+          data: (User & { email_verified?: boolean }) | null;
+          error: any;
+        };
+
         if (error || !user) {
           throw new Error("User not found");
         }
@@ -63,43 +68,56 @@ export const authOptions: NextAuthOptions = {
           throw new Error("User not found");
         }
 
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password);
-        
+        const isPasswordValid = await bcrypt.compare(
+          credentials.password,
+          user.password
+        );
+
         if (!isPasswordValid) {
           throw new Error("Password is not correct");
         }
 
         // Check Supabase Auth status (source of truth) and enforce verification
         if (!supabaseAdmin) {
-          console.error('Supabase admin client not configured.');
+          console.error("Supabase admin client not configured.");
           return null;
         }
 
         // Supabase Admin API does not provide getUserByEmail; list and match locally
-        const { data: usersList, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        const { data: usersList, error: listError } =
+          await supabaseAdmin.auth.admin.listUsers();
         if (listError || !usersList?.users) {
-          console.error('Failed to list auth users:', listError);
+          console.error("Failed to list auth users:", listError);
           return null;
         }
 
-        const authUser = usersList.users.find(u => (u.email || '').toLowerCase() === credentials.email.toLowerCase());
+        const authUser = usersList.users.find(
+          (u) =>
+            (u.email || "").toLowerCase() === credentials.email.toLowerCase()
+        );
         if (!authUser) {
-          console.error('Auth user not found for email');
+          console.error("Auth user not found for email");
           throw new Error("User not found");
         }
 
         // Enforce email confirmation
         if (!authUser.email_confirmed_at) {
-          throw new Error("Please verify your email address before logging in. Check your inbox for the verification link.");
+          throw new Error(
+            "Please verify your email address before logging in. Check your inbox for the verification link."
+          );
         }
 
         // Require access_token only for first-time login (before first successful sign-in)
         const isFirstLogin = !authUser.last_sign_in_at;
-        const providedToken = (credentials as any).access_token as string | undefined;
-        
+        const providedToken = (credentials as any).access_token as
+          | string
+          | undefined;
+
         if (isFirstLogin) {
           if (!providedToken || providedToken.length < 20) {
-            throw new Error("First-time login must be completed via the email link we sent (includes access_token). Please open your inbox and use that link to verify your account.");
+            throw new Error(
+              "First-time login must be completed via the email link we sent (includes access_token). Please open your inbox and use that link to verify your account."
+            );
           }
         }
 
@@ -121,39 +139,56 @@ export const authOptions: NextAuthOptions = {
   },
   callbacks: {
     async signIn({ user, account, profile }) {
-      console.log("🔐 signIn callback triggered:", { provider: account?.provider, email: user.email });
-      
+      console.log("🔐 signIn callback triggered:", {
+        provider: account?.provider,
+        email: user.email,
+      });
+
       // If user signed in with Google OAuth, save them to Supabase
       if (account?.provider === "google" && supabase && user.email) {
         try {
-          console.log("🔐 Google OAuth sign in detected, checking/saving to Supabase...");
-          
+          console.log(
+            "🔐 Google OAuth sign in detected, checking/saving to Supabase..."
+          );
+
           // Check if user already exists
-          const { data: existingUser, error: checkError } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', user.email)
-            .maybeSingle() as { data: { id: string } | null; error: any };
-          
-          console.log("Existing user check:", { hasUser: !!existingUser, checkError });
-          
+          const { data: existingUser, error: checkError } = (await supabase
+            .from("users")
+            .select("id")
+            .eq("email", user.email)
+            .maybeSingle()) as { data: { id: string } | null; error: any };
+
+          console.log("Existing user check:", {
+            hasUser: !!existingUser,
+            checkError,
+          });
+
+          const oneMonthFromNow = new Date();
+          oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+
           if (!existingUser && !checkError) {
             // User doesn't exist, create them in Supabase
             console.log("✅ Creating new Google OAuth user in Supabase...");
-            const { data: newUser, error: insertError } = await supabase
-              .from('users')
+            const { data: newUser, error: insertError } = (await supabase
+              .from("users")
               .insert({
-                name: user.name || 'Google User',
+                name: user.name || "Google User",
                 email: user.email,
-                password: null, // No password for OAuth users
+                password: null,
+                subscription_plan: "free",
+                expiry_date: oneMonthFromNow.toISOString(),
+                conversions: 5,
               } as any)
               .select()
-              .single() as { data: User | null; error: any };
-            
+              .single()) as { data: User | null; error: any };
+
             if (insertError) {
               console.error("❌ Failed to save Google user:", insertError);
             } else {
-              console.log("✅ Google OAuth user saved to Supabase:", { id: newUser?.id, email: newUser?.email });
+              console.log("✅ Google OAuth user saved to Supabase:", {
+                id: newUser?.id,
+                email: newUser?.email,
+              });
             }
           } else if (existingUser) {
             console.log("✅ Google OAuth user already exists in Supabase");
@@ -163,7 +198,7 @@ export const authOptions: NextAuthOptions = {
           // Don't block sign-in if database save fails - always return true
         }
       }
-      
+
       // Always allow sign-in
       return true;
     },
@@ -173,19 +208,19 @@ export const authOptions: NextAuthOptions = {
         // So we need to look up the user in our database by email to get the correct UUID
         if (account?.provider === "google" && user.email && supabase) {
           try {
-            const { data: dbUser } = await supabase
-              .from('users')
-              .select('id')
-              .eq('email', user.email)
-              .maybeSingle() as { data: { id: string } | null; error: any };
-            
+            const { data: dbUser } = (await supabase
+              .from("users")
+              .select("id")
+              .eq("email", user.email)
+              .maybeSingle()) as { data: { id: string } | null; error: any };
+
             if (dbUser?.id) {
               token.id = dbUser.id; // Use UUID from database
             } else {
               token.id = user.id; // Fallback to NextAuth user ID
             }
           } catch (error) {
-            console.error('Error looking up user in JWT callback:', error);
+            console.error("Error looking up user in JWT callback:", error);
             token.id = user.id; // Fallback
           }
         } else {
@@ -196,8 +231,31 @@ export const authOptions: NextAuthOptions = {
       return token;
     },
     async session({ session, token }) {
-      if (session.user) {
+      if (session.user && token.id && supabase) {
         session.user.id = token.id as string;
+
+        // Fetch fresh subscription data from Supabase
+        try {
+          const { data: userData } = (await supabase
+            .from("users")
+            .select("subscription_plan, conversions, expiry_date")
+            .eq("id", token.id)
+            .single()) as {
+            data: {
+              subscription_plan: string;
+              conversions: number;
+              expiry_date: string;
+            } | null;
+          };
+
+          if (userData) {
+            session.user.subscriptionPlan = userData.subscription_plan;
+            session.user.conversions = userData.conversions;
+            session.user.expiryDate = userData.expiry_date;
+          }
+        } catch (error) {
+          console.error("Error fetching user subscription data:", error);
+        }
       }
       return session;
     },
@@ -240,17 +298,26 @@ export async function createUser(name: string, email: string, password: string) 
   // 2) APP DB RECORD — upsert to keep our users table in sync
   const hashedPassword = await bcrypt.hash(password, 12);
   console.log("📝 Upserting user into app users table...");
-  const { data: upserted, error: upsertError } = await supabase
-    .from('users')
-    .upsert({
-      // keep id separate from auth id; our table uses its own UUID default
-      name,
-      email,
-      password: hashedPassword,
-      updated_at: new Date().toISOString(),
-    } as any, { onConflict: 'email' })
+  
+  const oneMonthFromNow = new Date();
+  oneMonthFromNow.setMonth(oneMonthFromNow.getMonth() + 1);
+
+  const { data: upserted, error: upsertError } = (await supabase
+    .from("users")
+    .upsert(
+      {
+        name,
+        email,
+        password: hashedPassword,
+        subscription_plan: "free",
+        expiry_date: oneMonthFromNow.toISOString(), 
+        conversions: 5,
+        updated_at: new Date().toISOString(),
+      } as any,
+      { onConflict: "email" }
+    )
     .select()
-    .maybeSingle() as { data: User | null; error: any };
+    .maybeSingle()) as { data: User | null; error: any };
 
   if (upsertError) {
     console.error("❌ Users table upsert error:", upsertError);

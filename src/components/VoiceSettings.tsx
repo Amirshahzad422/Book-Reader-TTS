@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSession } from "next-auth/react";
+import { useToast } from "@/components/ui/toaster";
 
 interface VoiceSettingsProps {
   onSettingsChange: (settings: {
@@ -194,6 +196,9 @@ const PRESET_INSTRUCTIONS: { label: string; text: string }[] = [
 ];
 
 export default function VoiceSettings({ onSettingsChange, initialSettings }: VoiceSettingsProps) {
+  const { data: session } = useSession();
+  const { toast } = useToast();
+  const isPaidUser = session?.user?.subscriptionPlan === "paid";
   const [isExpanded, setIsExpanded] = useState(false);
   const [speed, setSpeed] = useState(initialSettings?.speed ?? 1.0);
   const [emotionalRange, setEmotionalRange] = useState(initialSettings?.emotionalRange ?? "Natural");
@@ -626,7 +631,33 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
       </button>
 
       {isExpanded && (
-        <div className="p-6 pt-0 space-y-6">
+        <div
+          className={`p-6 pt-0 space-y-6 relative ${
+            !isPaidUser ? "pointer-events-none" : ""
+          }`}
+          onClick={(e) => {
+            if (!isPaidUser) {
+              e.stopPropagation();
+              toast.warning(
+                "Premium Feature",
+                "Advanced voice settings are only available for paid users. Upgrade your plan to unlock!",
+                5000
+              );
+            }
+          }}
+        >
+          {!isPaidUser && (
+            <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 rounded-lg flex items-center justify-center">
+              <div className="text-center space-y-2">
+                <div className="text-4xl">🔒</div>
+                <p className="font-semibold text-lg">Premium Feature</p>
+                <p className="text-sm text-muted-foreground">
+                  Upgrade to customize voice settings
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Speed Control */}
           <div>
             <label className="block text-sm font-medium mb-2 flex items-center gap-3">
@@ -637,14 +668,21 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
                 className="h-7 px-2 text-xs"
                 onClick={toggleSpeedPreview}
                 disabled={isSpeedPreviewLoading}
-                title={isSpeedPreviewPlaying ? 'Pause preview' : 'Play preview'}
+                title={isSpeedPreviewPlaying ? "Pause preview" : "Play preview"}
               >
-                {isSpeedPreviewPlaying ? 'Pause' : 'Play'}
+                {isSpeedPreviewPlaying ? "Pause" : "Play"}
               </Button>
             </label>
             <div className="flex items-center gap-3">
               <span className="text-xs text-muted-foreground">Slow</span>
-              <Button type="button" variant="secondary" className="h-6 px-2 text-md" onClick={() => incrementSpeed(-0.1)}>-</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-6 px-2 text-md"
+                onClick={() => incrementSpeed(-0.1)}
+              >
+                -
+              </Button>
               <input
                 type="range"
                 min="0.5"
@@ -654,32 +692,46 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
                 onChange={(e) => handleSpeedChange(parseFloat(e.target.value))}
                 className="flex-1 accent-blue-950"
               />
-              <Button type="button" variant="secondary" className="h-6 px-2 text-md" onClick={() => incrementSpeed(0.1)}>+</Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-6 px-2 text-md"
+                onClick={() => incrementSpeed(0.1)}
+              >
+                +
+              </Button>
               <span className="text-xs text-muted-foreground">Fast</span>
             </div>
             <div className="flex flex-wrap justify-center gap-[11px] mt-3">
-              {Array.from({ length: 16 }, (_, i) => 0.5 + i * 0.1).map((val) => (
-                <Button
-                  key={val.toFixed(1)}
-                  type="button"
-                  variant={Math.abs(speed - val) < 0.05 ? "default" : "outline"}
-                  className="h-7 px-2 text-xs"
-                  onClick={() => handleSpeedChange(val)}
-                >
-                  {val.toFixed(1)}
-                </Button>
-              ))}
+              {Array.from({ length: 16 }, (_, i) => 0.5 + i * 0.1).map(
+                (val) => (
+                  <Button
+                    key={val.toFixed(1)}
+                    type="button"
+                    variant={
+                      Math.abs(speed - val) < 0.05 ? "default" : "outline"
+                    }
+                    className="h-7 px-2 text-xs"
+                    onClick={() => handleSpeedChange(val)}
+                  >
+                    {val.toFixed(1)}
+                  </Button>
+                )
+              )}
             </div>
             <p className="text-xs text-muted-foreground mt-2 flex justify-center">
-              0.5x = Half speed (more dramatic) • 1.0x = Normal • 2.0x = Double speed (energetic)
+              0.5x = Half speed (more dramatic) • 1.0x = Normal • 2.0x = Double
+              speed (energetic)
             </p>
           </div>
 
           {/* Emotional Range */}
           <div>
-            <label className="block text-sm font-medium mb-2">Emotional Range</label>
+            <label className="block text-sm font-medium mb-2">
+              Emotional Range
+            </label>
             <div className="flex flex-wrap gap-2">
-              {EMOTIONAL_RANGES.map(range => (
+              {EMOTIONAL_RANGES.map((range) => (
                 <Button
                   key={range}
                   type="button"
@@ -701,7 +753,7 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
           <div>
             <label className="block text-sm font-medium mb-2">Tone</label>
             <div className="flex flex-wrap gap-2">
-              {TONE_OPTIONS.map(t => (
+              {TONE_OPTIONS.map((t) => (
                 <Button
                   key={t}
                   type="button"
@@ -723,7 +775,7 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
           <div>
             <label className="block text-sm font-medium mb-2">Intonation</label>
             <div className="flex flex-wrap gap-2">
-              {INTONATION_OPTIONS.map(int => (
+              {INTONATION_OPTIONS.map((int) => (
                 <Button
                   key={int}
                   type="button"
@@ -740,7 +792,6 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
               Controls pitch variation and emphasis patterns
             </p>
           </div>
-
 
           {/* Custom Instructions */}
           <div>
@@ -785,8 +836,9 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
             />
             <div className="mt-1 flex items-center justify-between">
               <p className="text-xs text-muted-foreground">
-                Be specific and concise. Combine 3–5 attributes for best results.
-            </p>
+                Be specific and concise. Combine 3–5 attributes for best
+                results.
+              </p>
               <span className="text-xs text-muted-foreground">
                 {customInstructions.length}/500
               </span>
@@ -800,15 +852,30 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
               {[
                 {
                   label: "Audiobook",
-                  settings: { EmotionalRange: "Dramatic and expressive", Tone: "Warm and friendly", Intonation: "Expressive with variation", Speed: 0.9 },
+                  settings: {
+                    EmotionalRange: "Dramatic and expressive",
+                    Tone: "Warm and friendly",
+                    Intonation: "Expressive with variation",
+                    Speed: 0.9,
+                  },
                 },
                 {
                   label: "Professional",
-                  settings: { EmotionalRange: "Natural", Tone: "Confident and authoritative", Intonation: "Natural", Speed: 1.0 },
+                  settings: {
+                    EmotionalRange: "Natural",
+                    Tone: "Confident and authoritative",
+                    Intonation: "Natural",
+                    Speed: 1.0,
+                  },
                 },
                 {
                   label: "Storytelling",
-                  settings: { EmotionalRange: "Dramatic and expressive", Tone: "Warm and friendly", Intonation: "Smooth and flowing", Speed: 1.1 },
+                  settings: {
+                    EmotionalRange: "Dramatic and expressive",
+                    Tone: "Warm and friendly",
+                    Intonation: "Smooth and flowing",
+                    Speed: 1.1,
+                  },
                 },
               ].map(({ label, settings }) => (
                 <div key={label} className="flex items-start gap-2 text-xs">
@@ -826,7 +893,12 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
                     Apply
                   </Button>
                   <div className="text-muted-foreground">
-                    <strong className="text-foreground underline">{label}:</strong> Emotional Range: {settings.EmotionalRange} • Tone: {settings.Tone} • Intonation: {settings.Intonation} • Speed: {settings.Speed.toFixed(1)}x
+                    <strong className="text-foreground underline">
+                      {label}:
+                    </strong>{" "}
+                    Emotional Range: {settings.EmotionalRange} • Tone:{" "}
+                    {settings.Tone} • Intonation: {settings.Intonation} • Speed:{" "}
+                    {settings.Speed.toFixed(1)}x
                   </div>
                 </div>
               ))}

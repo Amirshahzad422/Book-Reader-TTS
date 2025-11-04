@@ -160,3 +160,11 @@ The platform provides comprehensive error handling for:
 ## License
 
 This project is part of the AI PDF-to-Audio Platform requirements document implementation.
+
+
+https://docs.google.com/document/d/1SO__ivREzyEEtVDQbvPgNEG7P-wfp9ayD1oiPKF_y2o/edit?usp=sharing&pli=1&authuser=0
+
+GumRoad credentials
+Application id: xWrdeMWJOuKKLxPsUMkKZoqm9kclAR_YsrdZ-8cvllU
+Application secret: qFXWMWUhgkNOEK0E7YEfyeDB2GIsfe6Rj-5qWBnuD2c
+Access Token: 1Y03TDZb-NwZ1JKs5xerNb2N_INn4pJ6Wpjqp0AGUqo

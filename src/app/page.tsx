@@ -11,7 +11,9 @@ import AuthModal from "@/components/auth/AuthModal";
 import ConversationsHistory from "@/components/ConversationsHistory";
 import { Button } from "@/components/ui/button";
 import { AVAILABLE_VOICES } from "@/lib/voiceDefinitions";
-import { FaHistory } from "react-icons/fa";
+import { FaHistory, FaTimes } from "react-icons/fa";
+import { MessageCircleQuestion } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -330,12 +332,40 @@ export default function Home() {
     }
 
     setIsConverting(true);
+    alert(
+      "⚠️ Converting your PDF to audio...\n\nPlease don't close this window until conversion is complete."
+    );
     setConversionProgress(0);
 
+    // Decrement conversion count immediately - MUST succeed before conversion
+    if (session?.user?.id) {
+      try {
+        const response = await fetch('/api/decrement-conversion', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: session.user.id }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to update conversion count');
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+          throw new Error('Conversion count update failed');
+        }
+      } catch (error) {
+        console.error('Failed to update conversion count:', error);
+        alert('❌ Failed to update conversion count. Please try again.');
+        setIsConverting(false);
+        return; // Stop execution - don't proceed with conversion
+      }
+    }
+    
     try {
       // Simulate progress updates
       const progressInterval = setInterval(() => {
-        setConversionProgress(prev => {
+        setConversionProgress((prev) => {
           if (prev >= 90) {
             clearInterval(progressInterval);
             return 90;
@@ -345,71 +375,83 @@ export default function Home() {
       }, 500);
 
       const formData = new FormData();
-      formData.append('pdf', uploadedFile);
-      formData.append('voice', selectedVoice);
+      formData.append("pdf", uploadedFile);
+      formData.append("voice", selectedVoice);
 
       // Add voice settings if provided
       if (voiceSettings.instructions) {
-        formData.append('instructions', voiceSettings.instructions);
+        formData.append("instructions", voiceSettings.instructions);
       }
-      formData.append('speed', voiceSettings.speed.toString());
-      
+      formData.append("speed", voiceSettings.speed.toString());
+
       // Add individual settings for detailed logging
       if (voiceSettings.emotionalRange) {
-        formData.append('emotionalRange', voiceSettings.emotionalRange);
+        formData.append("emotionalRange", voiceSettings.emotionalRange);
       }
       if (voiceSettings.tone) {
-        formData.append('tone', voiceSettings.tone);
+        formData.append("tone", voiceSettings.tone);
       }
       if (voiceSettings.intonation) {
-        formData.append('intonation', voiceSettings.intonation);
+        formData.append("intonation", voiceSettings.intonation);
       }
       if (voiceSettings.accent) {
-        formData.append('accent', voiceSettings.accent);
+        formData.append("accent", voiceSettings.accent);
       }
       if (voiceSettings.age) {
-        formData.append('age', voiceSettings.age);
+        formData.append("age", voiceSettings.age);
       }
       if (voiceSettings.pacing) {
-        formData.append('pacing', voiceSettings.pacing);
+        formData.append("pacing", voiceSettings.pacing);
       }
       if (voiceSettings.emphasis) {
-        formData.append('emphasis', voiceSettings.emphasis);
+        formData.append("emphasis", voiceSettings.emphasis);
       }
       if (voiceSettings.context) {
-        formData.append('context', voiceSettings.context);
+        formData.append("context", voiceSettings.context);
       }
       if (voiceSettings.whispering) {
-        formData.append('whispering', voiceSettings.whispering.toString());
+        formData.append("whispering", voiceSettings.whispering.toString());
       }
       if (voiceSettings.customInstructions) {
-        formData.append('customInstructions', voiceSettings.customInstructions);
+        formData.append("customInstructions", voiceSettings.customInstructions);
       }
 
       // LOG WHAT'S BEING SENT - DETAILED BREAKDOWN
-      console.log('═══════════════════════════════════════════════════');
-      console.log('📤 SENDING TO API - DETAILED BREAKDOWN:');
-      console.log('═══════════════════════════════════════════════════');
-      console.log('🎤 Voice:', selectedVoice);
-      console.log('⚡ Speed:', voiceSettings.speed);
-      console.log('🎭 Combined Instructions:', voiceSettings.instructions || '(none)');
-      console.log('');
-      console.log('📋 Individual Settings:');
-      console.log('   - Emotional Range:', voiceSettings.emotionalRange || 'Natural (default)');
-      console.log('   - Tone:', voiceSettings.tone || 'Natural (default)');
-      console.log('   - Intonation:', voiceSettings.intonation || 'Natural (default)');
-      console.log('   - Accent:', voiceSettings.accent || 'None');
-      console.log('   - Age:', voiceSettings.age || 'Default');
-      console.log('   - Pacing:', voiceSettings.pacing || 'Default');
-      console.log('   - Emphasis:', voiceSettings.emphasis || 'Default');
-      console.log('   - Context:', voiceSettings.context || 'None');
-      console.log('   - Whispering:', voiceSettings.whispering ? 'Yes' : 'No');
-      console.log('   - Custom Instructions:', voiceSettings.customInstructions || '(none)');
-      console.log('📄 File:', uploadedFile.name);
-      console.log('═══════════════════════════════════════════════════');
+      console.log("═══════════════════════════════════════════════════");
+      console.log("📤 SENDING TO API - DETAILED BREAKDOWN:");
+      console.log("═══════════════════════════════════════════════════");
+      console.log("🎤 Voice:", selectedVoice);
+      console.log("⚡ Speed:", voiceSettings.speed);
+      console.log(
+        "🎭 Combined Instructions:",
+        voiceSettings.instructions || "(none)"
+      );
+      console.log("");
+      console.log("📋 Individual Settings:");
+      console.log(
+        "   - Emotional Range:",
+        voiceSettings.emotionalRange || "Natural (default)"
+      );
+      console.log("   - Tone:", voiceSettings.tone || "Natural (default)");
+      console.log(
+        "   - Intonation:",
+        voiceSettings.intonation || "Natural (default)"
+      );
+      console.log("   - Accent:", voiceSettings.accent || "None");
+      console.log("   - Age:", voiceSettings.age || "Default");
+      console.log("   - Pacing:", voiceSettings.pacing || "Default");
+      console.log("   - Emphasis:", voiceSettings.emphasis || "Default");
+      console.log("   - Context:", voiceSettings.context || "None");
+      console.log("   - Whispering:", voiceSettings.whispering ? "Yes" : "No");
+      console.log(
+        "   - Custom Instructions:",
+        voiceSettings.customInstructions || "(none)"
+      );
+      console.log("📄 File:", uploadedFile.name);
+      console.log("═══════════════════════════════════════════════════");
 
-      const response = await fetch('/api/convert-to-audio', {
-        method: 'POST',
+      const response = await fetch("/api/convert-to-audio", {
+        method: "POST",
         body: formData,
       });
 
@@ -418,15 +460,15 @@ export default function Home() {
 
       if (response.ok) {
         // Get metadata from response headers if available
-        const langHeader = response.headers.get('x-detected-language');
-        const lenHeader = response.headers.get('x-text-length');
+        const langHeader = response.headers.get("x-detected-language");
+        const lenHeader = response.headers.get("x-text-length");
         if (langHeader) setDetectedLanguage(langHeader);
         if (lenHeader) setTextLength(parseInt(lenHeader));
-        
+
         const blob = await response.blob();
         const audioUrl = URL.createObjectURL(blob);
         setAudioUrl(audioUrl);
-        
+
         // Save converted audio state to localStorage
         // Convert blob to base64 for storage
         if (typeof window !== "undefined") {
@@ -434,18 +476,27 @@ export default function Home() {
             const reader = new FileReader();
             reader.onload = (e) => {
               if (e.target?.result) {
-                const base64 = (e.target.result as string).split(',')[1] || e.target.result as string;
+                const base64 =
+                  (e.target.result as string).split(",")[1] ||
+                  (e.target.result as string);
                 localStorage.setItem("convertedAudioUrl", base64);
-                if (langHeader) localStorage.setItem("convertedDetectedLanguage", langHeader);
-                if (lenHeader) localStorage.setItem("convertedTextLength", lenHeader);
+                if (langHeader)
+                  localStorage.setItem("convertedDetectedLanguage", langHeader);
+                if (lenHeader)
+                  localStorage.setItem("convertedTextLength", lenHeader);
                 // Also save file info for restoration
                 if (uploadedFile) {
                   const fileReader = new FileReader();
                   fileReader.onload = (fe) => {
                     if (fe.target?.result) {
-                      const fileBase64 = (fe.target.result as string).split(',')[1] || fe.target.result as string;
+                      const fileBase64 =
+                        (fe.target.result as string).split(",")[1] ||
+                        (fe.target.result as string);
                       localStorage.setItem("convertedFileData", fileBase64);
-                      localStorage.setItem("convertedFileName", uploadedFile.name);
+                      localStorage.setItem(
+                        "convertedFileName",
+                        uploadedFile.name
+                      );
                     }
                   };
                   fileReader.readAsDataURL(uploadedFile);
@@ -458,29 +509,44 @@ export default function Home() {
           }
         }
       } else {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || 'Conversion failed');
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Conversion failed");
       }
     } catch (error) {
-      console.error('Error converting PDF to audio:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error("Error converting PDF to audio:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error occurred";
 
-      if (errorMessage.includes('API key')) {
-        alert('❌ OpenAI API Key Missing\n\nPlease add your OPENAI_API_KEY to the .env.local file and restart the server.');
-      } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit') || errorMessage.includes('All OpenAI API keys')) {
-        alert(`🚨 All API Keys Quota Exceeded\n\n` +
-          `All your OpenAI API keys have hit their usage limits.\n\n` +
-          `Quick Solutions:\n` +
-          `• Add billing to your OpenAI accounts at platform.openai.com/account/billing\n` +
-          `• Add $5-10 to each account (very affordable)\n` +
-          `• Wait 1 hour if on free tier\n` +
-          `• Try with a smaller PDF (1-2 pages)\n\n` +
-          `Your app supports multiple API keys - just add billing and you're back online!\n\n` +
-          `Cost: ~$0.25 per PDF conversion (very cheap!)`);
-      } else if (errorMessage.includes('billing')) {
-        alert('💳 OpenAI Billing Issue\n\nPlease check your payment method at platform.openai.com/account/billing');
+      if (errorMessage.includes("API key")) {
+        alert(
+          "❌ OpenAI API Key Missing\n\nPlease add your OPENAI_API_KEY to the .env.local file and restart the server."
+        );
+      } else if (
+        errorMessage.includes("quota") ||
+        errorMessage.includes("rate limit") ||
+        errorMessage.includes("All OpenAI API keys")
+      ) {
+        alert(
+          `🚨 All API Keys Quota Exceeded\n\n` +
+            `All your OpenAI API keys have hit their usage limits.\n\n` +
+            `Quick Solutions:\n` +
+            `• Add billing to your OpenAI accounts at platform.openai.com/account/billing\n` +
+            `• Add $5-10 to each account (very affordable)\n` +
+            `• Wait 1 hour if on free tier\n` +
+            `• Try with a smaller PDF (1-2 pages)\n\n` +
+            `Your app supports multiple API keys - just add billing and you're back online!\n\n` +
+            `Cost: ~$0.25 per PDF conversion (very cheap!)`
+        );
+      } else if (errorMessage.includes("billing")) {
+        alert(
+          "💳 OpenAI Billing Issue\n\nPlease check your payment method at platform.openai.com/account/billing"
+        );
       } else {
-        alert(`❌ Conversion Failed\n\n${errorMessage}\n\nPlease try again or check your internet connection.`);
+        alert(
+          `❌ Conversion Failed\n\n${errorMessage}\n\nPlease try again or check your internet connection.`
+        );
       }
     } finally {
       setIsConverting(false);
@@ -504,6 +570,11 @@ export default function Home() {
                   <FaHistory />
                   View Past Conversations
                 </Button>
+                <Link href="/support">
+                  <Button variant="outline" className="flex items-center gap-2">
+                    <MessageCircleQuestion className="w-4 h-4" />
+                  </Button>
+                </Link>
                 <span className="text-sm text-muted-foreground">
                   Welcome, {session.user?.name || session.user?.email}
                 </span>
@@ -518,9 +589,9 @@ export default function Home() {
             AI PDF-to-Audio Platform
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-6">
-            Transform your PDFs into natural, human-like audio with advanced AI voice technology
+            Transform your PDFs into natural, human-like audio with advanced AI
+            voice technology
           </p>
-
 
           {/* Expired Link Error Banner */}
           {expiredLinkError && (
@@ -533,16 +604,22 @@ export default function Home() {
                       Email Link Expired
                     </h3>
                     <p className="text-sm text-orange-600 dark:text-orange-300 mb-4">
-                      The verification link in your email has expired. Please request a new verification email.
+                      The verification link in your email has expired. Please
+                      request a new verification email.
                       {expiredLinkError.email && (
                         <span className="block mt-2 font-medium">
-                          Resending to: <span className="text-orange-800 dark:text-orange-200">{expiredLinkError.email}</span>
+                          Resending to:{" "}
+                          <span className="text-orange-800 dark:text-orange-200">
+                            {expiredLinkError.email}
+                          </span>
                         </span>
                       )}
                     </p>
                     <div className="flex gap-3">
                       <Button
-                        onClick={() => handleResendVerification(expiredLinkError.email)}
+                        onClick={() =>
+                          handleResendVerification(expiredLinkError.email)
+                        }
                         className="bg-orange-600 hover:bg-orange-700 text-white"
                       >
                         Resend Verification Email
@@ -552,7 +629,7 @@ export default function Home() {
                         onClick={() => setExpiredLinkError(null)}
                       >
                         Close
-              </Button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -563,17 +640,35 @@ export default function Home() {
 
         <div className="max-w-4xl mx-auto space-y-8">
           {!uploadedFile && !isConverting && !audioUrl && (
-            <PDFUploader onFileUpload={handleFileUpload} />
+            <PDFUploader
+              onFileUpload={handleFileUpload}
+              onLoginRequired={() => setShowAuthModal(true)}
+            />
           )}
 
           {uploadedFile && !isConverting && !audioUrl && (
             <div className="space-y-6">
               {/* File Info */}
               <div className="text-center">
-                <div className="bg-card p-6 rounded-lg border">
+                <div className="bg-card p-6 rounded-lg border relative group">
+                  <button
+                    onClick={() => {
+                      setUploadedFile(null);
+                      if (typeof window !== "undefined") {
+                        localStorage.removeItem("uploadedFileData");
+                        localStorage.removeItem("uploadedFileName");
+                      }
+                    }}
+                    className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2"
+                    aria-label="Remove file"
+                  >
+                    <FaTimes className="w-3 h-3" />
+                    Remove File
+                  </button>
                   <h3 className="text-lg font-semibold mb-2">File Ready</h3>
                   <p className="text-muted-foreground mb-4">
-                    {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    {uploadedFile.name} (
+                    {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
                   </p>
                 </div>
               </div>
@@ -581,58 +676,50 @@ export default function Home() {
               {/* Convert Button */}
               <div className="text-center">
                 <div className="flex flex-col items-center gap-3">
-                  {session ? (
-                <button
-                  onClick={handleConvertToAudio}
-                      className="bg-primary text-primary-foreground px-10 py-4 rounded-lg font-semibold hover:bg-primary/90 transition-all text-lg shadow-md hover:shadow-lg min-w-[240px]"
-                    >
-                      🎵 Convert to Audio
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setShowAuthModal(true)}
-                      className="bg-primary text-primary-foreground px-10 py-4 rounded-lg font-semibold hover:bg-primary/90 transition-all text-lg shadow-md hover:shadow-lg min-w-[240px]"
-                    >
-                      🔐 Login to Convert
-                </button>
-                  )}
+                  <button
+                    onClick={handleConvertToAudio}
+                    className="bg-primary text-primary-foreground px-10 py-4 rounded-lg font-semibold hover:bg-primary/90 transition-all text-lg shadow-md hover:shadow-lg min-w-[240px]"
+                  >
+                    🎵 Convert to Audio
+                  </button>
                 </div>
                 <div className="mt-2 text-sm text-muted-foreground">
-                  Using <strong>{AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.name}</strong> ({AVAILABLE_VOICES.find(v => v.id === selectedVoice)?.gender}) • {voiceSettings.speed.toFixed(1)}x speed
-                  {voiceSettings.instructions && ' • Custom settings'}
+                  Using{" "}
+                  <strong>
+                    {AVAILABLE_VOICES.find((v) => v.id === selectedVoice)?.name}
+                  </strong>{" "}
+                  (
+                  {AVAILABLE_VOICES.find((v) => v.id === selectedVoice)?.gender}
+                  ) • {voiceSettings.speed.toFixed(1)}x speed
+                  {voiceSettings.instructions && " • Custom settings"}
                 </div>
               </div>
 
               {/* Advanced Voice Settings */}
-              <VoiceSettings 
-                onSettingsChange={setVoiceSettings} 
+              <VoiceSettings
+                onSettingsChange={setVoiceSettings}
                 initialSettings={initialVoiceSettings || undefined}
               />
-
 
               {/* Voice Selection */}
               <VoiceSelector
                 selectedVoice={selectedVoice}
                 onVoiceChange={setSelectedVoice}
               />
-
-
             </div>
           )}
 
-          {isConverting && (
-            <ConversionLoader progress={conversionProgress} />
-          )}
+          {isConverting && <ConversionLoader progress={conversionProgress} />}
 
           {audioUrl && (
             <div className="space-y-6">
-              <AudioPlayer 
-                audioUrl={audioUrl} 
+              <AudioPlayer
+                audioUrl={audioUrl}
                 fileName={uploadedFile?.name || "Converted Audio"}
                 pdfFile={uploadedFile}
                 voiceSettings={{
                   ...voiceSettings,
-                  voice: selectedVoice
+                  voice: selectedVoice,
                 }}
                 detectedLanguage={detectedLanguage}
                 textLength={textLength}
