@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 export default function PricingPage() {
   const { data: session } = useSession();
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
 
   const plans = [
     {
@@ -42,7 +43,7 @@ export default function PricingPage() {
       ],
       cta:
         session?.user?.subscriptionPlan === "paid"
-          ? "Downgrade"
+          ? "Manage Subscription"
           : "Upgrade Now",
       highlighted: true,
     },
@@ -58,49 +59,72 @@ export default function PricingPage() {
       return;
     }
 
-    // Handle downgrade
-    if (
-      session?.user?.subscriptionPlan === "paid" &&
-      planName === "Professional"
-    ) {
-      const confirmed = confirm(
-        "Are you sure you want to downgrade? Your paid features will be disabled immediately."
-      );
-      if (!confirmed) return;
+    setIsLoading(true);
 
+    // Handle subscription management for paid users
+    if (session?.user?.subscriptionPlan === "paid") {
       try {
-        const response = await fetch("/api/subscription/downgrade", {
+        const response = await fetch("/api/lemonsqueezy/portal", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
 
         const data = await response.json();
 
-        if (response.ok) {
-          alert(
-            `Plan downgraded to Free. To stop future charges, please cancel your subscription in Gumroad Library.\n\nSubscription ID: ${
-              data.subscriptionId || "Not available"
-            }`
-          );
-          window.open("https://app.gumroad.com/library", "_blank");
-          router.refresh();
+        if (response.ok && data.url) {
+          window.open(data.url, "_blank");
         } else {
-          alert("Failed to downgrade: " + data.error);
+          alert("Failed to open customer portal. Please contact support.");
         }
       } catch (error) {
-        alert("Error downgrading plan. Please try again.");
+        alert("Error opening customer portal. Please try again.");
+      } finally {
+        setIsLoading(false);
       }
       return;
     }
 
-    // Handle upgrade - redirect to Gumroad with user email
-    const gumroadUrl = `https://pdfvoice.gumroad.com/l/professional?email=${encodeURIComponent(
-      session.user.email || ""
-    )}&wanted=true`;
-    window.open(gumroadUrl, "_blank");
-    alert(
-      "You'll be redirected to Gumroad to complete your payment. Your plan will be automatically upgraded once payment is confirmed."
-    );
+    // Handle upgrade - Open LemonSqueezy checkout
+    try {
+      // Load LemonSqueezy.js if not already loaded
+      if (!(window as any).LemonSqueezy) {
+        const script = document.createElement("script");
+        script.src = "https://app.lemonsqueezy.com/js/lemon.js";
+        script.defer = true;
+        document.head.appendChild(script);
+
+        await new Promise((resolve) => {
+          script.onload = resolve;
+        });
+      }
+
+      // Initialize LemonSqueezy
+      const LemonSqueezy = (window as any).LemonSqueezy;
+      LemonSqueezy.Setup({
+        eventHandler: (event: any) => {
+          if (event === "Checkout.Success") {
+            alert("Payment successful! Your account will be upgraded shortly.");
+            setTimeout(() => {
+              router.refresh();
+            }, 2000);
+          }
+        },
+      });
+
+      // Open checkout with user email pre-filled
+      const checkoutUrl = `${
+        process.env.NEXT_PUBLIC_LEMONSQUEEZY_CHECKOUT_URL
+      }?checkout[email]=${encodeURIComponent(
+        session.user.email || ""
+      )}&checkout[custom][user_id]=${session.user.id || ""}`;
+
+      LemonSqueezy.Url.Open(checkoutUrl);
+    } catch (error) {
+      console.error("Checkout error:", error);
+      alert("Failed to open checkout. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -156,13 +180,10 @@ export default function PricingPage() {
 
                   <div className="mb-6">
                     <span className="text-5xl font-bold">
-                      $
-                      {plan.price.monthly}
+                      ${plan.price.monthly}
                     </span>
                     {plan.price.monthly > 0 && (
-                      <span className="text-muted-foreground ml-2">
-                        /month
-                      </span>
+                      <span className="text-muted-foreground ml-2">/month</span>
                     )}
                   </div>
                 </div>
@@ -202,9 +223,9 @@ export default function PricingPage() {
                       : ""
                   }`}
                   variant={plan.highlighted ? "default" : "outline"}
-                  disabled={plan.name === "Starter"}
+                  disabled={plan.name === "Starter" || isLoading}
                 >
-                  {plan.cta}
+                  {isLoading ? "Loading..." : plan.cta}
                 </Button>
               </div>
             </div>
