@@ -17,7 +17,9 @@ export default function SupportPage() {
   const { data: session } = useSession();
   const router = useRouter();
 
-  const [subject, setSubject] = useState(SUPPORT_SUBJECTS[0]);
+  const [subject, setSubject] = useState<(typeof SUPPORT_SUBJECTS)[number]>(
+    SUPPORT_SUBJECTS[0]
+  );
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -314,7 +316,11 @@ export default function SupportPage() {
                 </label>
                 <select
                   value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
+                  onChange={(e) =>
+                    setSubject(
+                      e.target.value as (typeof SUPPORT_SUBJECTS)[number]
+                    )
+                  }
                   className="w-full px-4 py-3 rounded-lg border border-border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   {SUPPORT_SUBJECTS.map((subj) => (

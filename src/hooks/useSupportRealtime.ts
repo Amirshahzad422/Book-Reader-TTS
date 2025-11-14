@@ -1,10 +1,13 @@
 import { useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+const supabase =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey)
+    : null;
 
 export function useSupportRealtime(
   userId: string,
@@ -14,7 +17,7 @@ export function useSupportRealtime(
   const channelRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !supabase) return;
 
     // Create a channel for real-time updates
     const channel = supabase.channel("support_realtime");
@@ -51,7 +54,7 @@ export function useSupportRealtime(
 
     // Cleanup on unmount
     return () => {
-      if (channelRef.current) {
+      if (channelRef.current && supabase) {
         supabase.removeChannel(channelRef.current);
       }
     };

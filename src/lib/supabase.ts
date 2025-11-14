@@ -5,16 +5,16 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE || process.env.SUPABASE_SERVICE_ROLE_KEY; // Admin key for server-side operations
 
 // Only create client if credentials are provided
-let supabase: ReturnType<typeof createClient> | null = null;
-let supabaseAdmin: ReturnType<typeof createClient> | null = null;
+let supabase: ReturnType<typeof createClient<any>> | null = null;
+let supabaseAdmin: ReturnType<typeof createClient<any>> | null = null;
 
 if (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'your-supabase-url' && supabaseAnonKey !== 'your-supabase-anon-key') {
-  supabase = createClient(supabaseUrl, supabaseAnonKey);
+  supabase = createClient<any>(supabaseUrl, supabaseAnonKey);
 }
 
 // Create admin client for server-side operations (only if service key is provided)
 if (supabaseUrl && supabaseServiceKey && supabaseUrl !== 'your-supabase-url' && supabaseServiceKey !== 'your-supabase-service-key') {
-  supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+  supabaseAdmin = createClient<any>(supabaseUrl, supabaseServiceKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false

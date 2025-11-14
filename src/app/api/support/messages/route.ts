@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE!
-);
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 
 // GET - Fetch messages for a specific ticket
 export async function GET(req: NextRequest) {
   try {
+    const supabaseClient = supabaseAdmin ?? supabase;
+
+    if (!supabaseClient) {
+      console.error("Supabase client is not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,7 +32,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Verify ticket belongs to user
-    const { data: ticket, error: ticketError } = await supabase
+    const { data: ticket, error: ticketError } = await supabaseClient
       .from("support_tickets")
       .select("id")
       .eq("id", ticketId)
@@ -42,7 +47,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch messages
-    const { data: messages, error: messagesError } = await supabase
+    const { data: messages, error: messagesError } = await supabaseClient
       .from("support_messages")
       .select("*")
       .eq("ticket_id", ticketId)
@@ -63,6 +68,16 @@ export async function GET(req: NextRequest) {
 // POST - Send a message to a ticket
 export async function POST(req: NextRequest) {
   try {
+    const supabaseClient = supabaseAdmin ?? supabase;
+
+    if (!supabaseClient) {
+      console.error("Supabase client is not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -87,7 +102,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify ticket belongs to user and is open
-    const { data: ticket, error: ticketError } = await supabase
+    const { data: ticket, error: ticketError } = await supabaseClient
       .from("support_tickets")
       .select("id, status")
       .eq("id", ticketId)
@@ -109,7 +124,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Create message
-    const { data: newMessage, error: messageError } = await supabase
+    const { data: newMessage, error: messageError } = await supabaseClient
       .from("support_messages")
       .insert({
         ticket_id: ticketId,
@@ -123,7 +138,7 @@ export async function POST(req: NextRequest) {
     if (messageError) throw messageError;
 
     // Update ticket's updated_at timestamp
-    await supabase
+    await supabaseClient
       .from("support_tickets")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", ticketId);

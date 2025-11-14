@@ -9,8 +9,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "User ID required" }, { status: 400 });
     }
 
+    if (!supabase) {
+      console.error("Supabase client is not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 },
+      );
+    }
+
+    const supabaseClient = supabase;
+
     // First fetch current conversions
-    const { data: user, error: fetchError } = await supabase
+    const { data: user, error: fetchError } = await supabaseClient
       .from("users")
       .select("conversions")
       .eq("id", userId)
@@ -19,7 +29,7 @@ export async function POST(req: NextRequest) {
     if (fetchError) throw fetchError;
 
     // Decrement conversions by 1
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from("users")
       .update({
         conversions: Math.max(0, (user?.conversions || 0) - 1),

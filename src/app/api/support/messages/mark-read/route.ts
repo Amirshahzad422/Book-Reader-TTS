@@ -1,16 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE!
-);
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 
 // POST - Mark all messages in a ticket as read
 export async function POST(req: NextRequest) {
   try {
+    const supabaseClient = supabaseAdmin ?? supabase;
+
+    if (!supabaseClient) {
+      console.error("Supabase client is not configured");
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 }
+      );
+    }
+
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -27,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verify ticket belongs to user
-    const { data: ticket, error: ticketError } = await supabase
+    const { data: ticket, error: ticketError } = await supabaseClient
       .from("support_tickets")
       .select("id")
       .eq("id", ticketId)
@@ -42,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Mark all admin messages as read
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseClient
       .from("support_messages")
       .update({ read: true })
       .eq("ticket_id", ticketId)
