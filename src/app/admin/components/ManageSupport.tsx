@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { adminAuth } from "./../utils/adminAuth";
 import {
   X,
@@ -22,12 +22,6 @@ import {
   Timer,
   Users,
 } from "lucide-react";
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 interface SupportTicket {
   id: string;
@@ -109,6 +103,12 @@ export const ManageSupport: React.FC = () => {
 
   // Fetch all data independently
   const fetchAllData = async () => {
+    if (!supabase) {
+      console.error("Supabase client is not configured");
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -259,6 +259,11 @@ export const ManageSupport: React.FC = () => {
 
   // Mark messages as read
   const markMessagesAsRead = async (ticketId: string) => {
+    if (!supabase) {
+      console.error("Supabase is not configured");
+      return;
+    }
+
     try {
       await supabase
         .from("support_messages")
@@ -283,6 +288,11 @@ export const ManageSupport: React.FC = () => {
   // Send message
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !selectedTicket || !adminUser) return;
+
+    if (!supabase) {
+      alert("Supabase is not configured");
+      return;
+    }
 
     try {
       setSendingMessage(true);
@@ -338,6 +348,11 @@ export const ManageSupport: React.FC = () => {
     ticketId: string,
     currentStatus: string
   ) => {
+    if (!supabase) {
+      alert("Supabase is not configured");
+      return;
+    }
+
     try {
       const newStatus = currentStatus === "open" ? "closed" : "open";
       const updateData: any = {

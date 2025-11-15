@@ -1,21 +1,38 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE!
-);
+import { supabaseAdmin } from "@/lib/supabase";
 
 export async function DELETE(request: NextRequest) {
-  const { bucket, path } = await request.json();
+  try {
+    if (!supabaseAdmin) {
+      return NextResponse.json(
+        { error: { message: "Supabase is not configured" } },
+        { status: 500 }
+      );
+    }
 
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .remove([path]);
+    const { bucket, path } = await request.json();
 
-  if (error) {
-    return NextResponse.json({ error }, { status: 500 });
+    if (!bucket || !path) {
+      return NextResponse.json(
+        { error: { message: "Bucket and path are required" } },
+        { status: 400 }
+      );
+    }
+
+    const { data, error } = await supabaseAdmin.storage
+      .from(bucket)
+      .remove([path]);
+
+    if (error) {
+      return NextResponse.json({ error }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, data });
+  } catch (error: any) {
+    console.error("Error deleting file:", error);
+    return NextResponse.json(
+      { error: { message: error.message || "Failed to delete file" } },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ success: true, data });
 }

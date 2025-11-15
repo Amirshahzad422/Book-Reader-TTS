@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase, supabaseAdmin } from "@/lib/supabase";
 import { adminAuth } from "./../utils/adminAuth";
 import {
   FileText,
@@ -15,12 +15,6 @@ import {
   Timer,
   Mic,
 } from "lucide-react";
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE! || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 interface Conversion {
   id: string;
@@ -86,6 +80,12 @@ export const ManageConversions: React.FC = () => {
   // Fetch conversions with filters and pagination
   const fetchConversions = useCallback(
     async (pageNum: number, isNewSearch: boolean = false) => {
+      if (!supabase) {
+        console.error("Supabase client is not configured");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
 
@@ -218,6 +218,11 @@ export const ManageConversions: React.FC = () => {
 
     if (!confirm("Are you sure you want to delete the PDF file?")) return;
 
+    if (!supabase) {
+      alert("Supabase is not configured");
+      return;
+    }
+
     try {
       setDeletingItem(conversion.id);
 
@@ -269,6 +274,11 @@ export const ManageConversions: React.FC = () => {
     }
 
     if (!confirm("Are you sure you want to delete the audio file?")) return;
+
+    if (!supabase) {
+      alert("Supabase is not configured");
+      return;
+    }
 
     try {
       setDeletingItem(conversion.id);
@@ -364,6 +374,12 @@ export const ManageConversions: React.FC = () => {
       }
 
       // Delete database record
+      if (!supabase) {
+        alert("Supabase is not configured");
+        setDeletingItem(null);
+        return;
+      }
+
       const { error: dbError } = await supabase
         .from("conversions")
         .delete()

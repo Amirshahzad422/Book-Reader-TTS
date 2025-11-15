@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { adminAuth } from "./../utils/adminAuth";
 import {
   Users,
@@ -15,12 +15,6 @@ import {
   BarChart3,
   LineChart,
 } from "lucide-react";
-
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 interface User {
   id: string;
@@ -67,6 +61,12 @@ export const ManageUsers: React.FC = () => {
 
   // Fetch users with filters and pagination
   const fetchUsers = useCallback(async () => {
+    if (!supabase) {
+      console.error("Supabase client is not configured");
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -322,6 +322,11 @@ export const ManageUsers: React.FC = () => {
 
   // Handle save
   const handleSave = async (userId: string) => {
+    if (!supabase) {
+      alert("Supabase is not configured");
+      return;
+    }
+
     try {
       const allowedFields = [
         "name",
@@ -362,6 +367,11 @@ export const ManageUsers: React.FC = () => {
   // Handle delete
   const handleDelete = async (userId: string) => {
     if (!confirm("Are you sure you want to delete this user?")) return;
+
+    if (!supabase) {
+      alert("Supabase is not configured");
+      return;
+    }
 
     try {
       const { error } = await supabase.from("users").delete().eq("id", userId);

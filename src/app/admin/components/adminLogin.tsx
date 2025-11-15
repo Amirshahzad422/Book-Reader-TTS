@@ -1,14 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import { adminAuth } from "./../utils/adminAuth";
-
-// Initialize Supabase client (adjust with your actual credentials)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 interface AdminLoginProps {
   onLoginSuccess: () => void;
@@ -33,6 +27,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
     setLoading(true);
 
     try {
+      if (!supabase) {
+        setError("Supabase is not configured. Please check your environment variables.");
+        setLoading(false);
+        return;
+      }
+
       // Query admin table
       const { data, error: queryError } = await supabase
         .from("admin")
