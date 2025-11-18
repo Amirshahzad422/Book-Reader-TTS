@@ -18,6 +18,7 @@ interface AdminSession {
 export const adminAuth = {
   // Store admin session
   setSession(admin: AdminUser): void {
+    if (typeof window === "undefined") return;
     const session: AdminSession = {
       admin,
       timestamp: Date.now(),
@@ -27,6 +28,7 @@ export const adminAuth = {
 
   // Get current admin session
   getSession(): AdminUser | null {
+    if (typeof window === "undefined") return null;
     try {
       const sessionData = localStorage.getItem(ADMIN_SESSION_KEY);
       if (!sessionData) return null;
@@ -48,6 +50,7 @@ export const adminAuth = {
 
   // Clear admin session (logout)
   clearSession(): void {
+    if (typeof window === "undefined") return;
     localStorage.removeItem(ADMIN_SESSION_KEY);
   },
 

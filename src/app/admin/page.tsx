@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { AdminLogin } from "./components/adminLogin";
 import { ManageUsers } from "./components/ManageUsers";
 import { ManageConversions } from "./components/ManageConversions";
@@ -9,12 +9,14 @@ import { adminAuth } from "./utils/adminAuth";
 import { Users, FileAudio, MessageSquare, LogOut } from "lucide-react";
 
 export default function AdminPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    adminAuth.isAuthenticated()
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState<
     "users" | "conversions" | "support"
   >("users");
+
+  useEffect(() => {
+    setIsAuthenticated(adminAuth.isAuthenticated());
+  }, []);
 
   const handleLogout = () => {
     //adminAuth.logout();
