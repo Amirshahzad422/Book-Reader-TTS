@@ -101,49 +101,6 @@ export default function PDFUploader({
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4">
-      {/* Subscription Info Banner */}
-      {session && (
-        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
-          <div className="flex items-center gap-2">
-            <FaCrown
-              className={
-                subscriptionPlan === "paid"
-                  ? "text-yellow-500"
-                  : "text-muted-foreground"
-              }
-            />
-            <span className="font-medium capitalize">
-              {subscriptionPlan} Plan
-            </span>
-          </div>
-          <div className="flex items-center gap-4">
-            <span className="text-muted-foreground">
-              Conversions:{" "}
-              <strong
-                className={
-                  conversions <= 2 ? "text-red-500" : "text-foreground"
-                }
-              >
-                {conversions}
-              </strong>
-            </span>
-            <span className="text-muted-foreground">
-              Max File Size: <strong>{maxFileSizeMB}MB</strong>
-            </span>
-            {subscriptionPlan && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => (window.location.href = "/pricing")}
-                className="text-xs"
-              >
-                {subscriptionPlan === "free" ? "Upgrade" : "Degrade"}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
       <div
         {...getRootProps()}
         className={`

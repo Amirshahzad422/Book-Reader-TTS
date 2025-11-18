@@ -10,14 +10,20 @@ import VoiceSettings from "@/components/VoiceSettings";
 import AuthModal from "@/components/auth/AuthModal";
 import ConversationsHistory from "@/components/ConversationsHistory";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AVAILABLE_VOICES } from "@/lib/voiceDefinitions";
-import { FaHistory, FaTimes } from "react-icons/fa";
+import { FaHistory, FaTimes, FaFilePdf, FaKeyboard, FaCrown } from "react-icons/fa";
 import { MessageCircleQuestion } from "lucide-react";
 import Link from "next/link";
 
+type InputType = 'pdf' | 'text';
+
 export default function Home() {
   const { data: session, status } = useSession();
+  const [inputType, setInputType] = useState<InputType>('pdf');
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [inputText, setInputText] = useState<string>('');
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   const [isConverting, setIsConverting] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [conversionProgress, setConversionProgress] = useState(0);
@@ -271,6 +277,7 @@ export default function Home() {
 
   const handleFileUpload = async (file: File) => {
     setUploadedFile(file);
+    setInputText(''); // Clear text when file is uploaded
     setAudioUrl(null);
     setDetectedLanguage(undefined);
     setTextLength(undefined);
@@ -294,8 +301,24 @@ export default function Home() {
     }
   };
 
+  const handleTextChange = (text: string) => {
+    if (text.length <= 1000) {
+      setInputText(text);
+      setUploadedFile(null); // Clear file when text is entered
+      setAudioUrl(null);
+      setDetectedLanguage(undefined);
+      setTextLength(undefined);
+      // Hide settings if text is cleared or becomes too short
+      if (text.trim().length < 10) {
+        setShowSettings(false);
+      }
+    }
+  };
+
   const handleStartOver = () => {
     setUploadedFile(null);
+    setInputText('');
+    setShowSettings(false);
     setAudioUrl(null);
     setIsConverting(false);
     setConversionProgress(0);
@@ -306,6 +329,7 @@ export default function Home() {
     if (typeof window !== "undefined") {
       localStorage.removeItem("uploadedFileData");
       localStorage.removeItem("uploadedFileName");
+      localStorage.removeItem("inputText");
       localStorage.removeItem("voiceSettings");
       localStorage.removeItem("selectedVoice");
       localStorage.removeItem("convertedAudioUrl");
@@ -317,7 +341,13 @@ export default function Home() {
   };
 
   const handleConvertToAudio = async () => {
-    if (!uploadedFile) return;
+    const hasFile = uploadedFile !== null;
+    const hasText = inputText.trim().length > 0;
+    
+    if (!hasFile && !hasText) {
+      alert('Please upload a PDF file or enter text to convert.');
+      return;
+    }
 
     // Clear localStorage when user starts conversion
     // This clears file and settings as conversion begins
@@ -332,8 +362,9 @@ export default function Home() {
     }
 
     setIsConverting(true);
+    const inputTypeText = hasFile ? "PDF" : "text";
     alert(
-      "⚠️ Converting your PDF to audio...\n\nPlease don't close this window until conversion is complete."
+      `⚠️ Converting your ${inputTypeText} to audio...\n\nPlease don't close this window until conversion is complete.`
     );
     setConversionProgress(0);
 
@@ -375,7 +406,14 @@ export default function Home() {
       }, 500);
 
       const formData = new FormData();
-      formData.append("pdf", uploadedFile);
+      
+      // Add PDF or text based on input type
+      if (hasFile && uploadedFile) {
+        formData.append("pdf", uploadedFile);
+      } else if (hasText) {
+        formData.append("text", inputText.trim());
+      }
+      
       formData.append("voice", selectedVoice);
 
       // Add voice settings if provided
@@ -447,7 +485,11 @@ export default function Home() {
         "   - Custom Instructions:",
         voiceSettings.customInstructions || "(none)"
       );
-      console.log("📄 File:", uploadedFile.name);
+      if (hasFile && uploadedFile) {
+        console.log("📄 File:", uploadedFile.name);
+      } else if (hasText) {
+        console.log("📝 Text Input:", inputText.length, "characters");
+      }
       console.log("═══════════════════════════════════════════════════");
 
       const response = await fetch("/api/convert-to-audio", {
@@ -639,37 +681,186 @@ export default function Home() {
         </div>
 
         <div className="max-w-4xl mx-auto space-y-8">
-          {!uploadedFile && !isConverting && !audioUrl && (
+          {/* Input Type Selector */}
+          {!uploadedFile && !inputText && !isConverting && !audioUrl && (
+            <div className="max-w-2xl mx-auto space-y-4">
+              {/* Subscription Info Banner */}
+              {session && (
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg text-sm">
+                  <div className="flex items-center gap-2">
+                    <FaCrown
+                      className={
+                        session.user?.subscriptionPlan === "paid"
+                          ? "text-yellow-500"
+                          : "text-muted-foreground"
+                      }
+                    />
+                    <span className="font-medium capitalize">
+                      {session.user?.subscriptionPlan || "free"} Plan
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className="text-muted-foreground">
+                      Conversions:{" "}
+                      <strong
+                        className={
+                          (session.user?.conversions ?? 0) <= 2 ? "text-red-500" : "text-foreground"
+                        }
+                      >
+                        {session.user?.conversions ?? 0}
+                      </strong>
+                    </span>
+                    <span className="text-muted-foreground">
+                      Max File Size: <strong>{session.user?.subscriptionPlan === "paid" ? "30MB" : "5MB"}</strong>
+                    </span>
+                    {session.user?.subscriptionPlan && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => (window.location.href = "/pricing")}
+                        className="text-xs"
+                      >
+                        {session.user?.subscriptionPlan === "free" ? "Upgrade" : "Degrade"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              <div className="bg-card p-6 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-4 text-center">Choose Input Type</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => setInputType('pdf')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      inputType === 'pdf'
+                        ? 'border-primary bg-primary/5 scale-105'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <FaFilePdf className="w-6 h-6 mx-auto mb-2 text-primary" />
+                    <div className="font-semibold text-sm">Upload PDF</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Extract text from PDF file
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setInputType('text')}
+                    className={`p-4 rounded-lg border-2 transition-all ${
+                      inputType === 'text'
+                        ? 'border-primary bg-primary/5 scale-105'
+                        : 'border-border hover:border-primary/50'
+                    }`}
+                  >
+                    <FaKeyboard className="w-6 h-6 mx-auto mb-2 text-primary" />
+                    <div className="font-semibold text-sm">Enter Text</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Type or paste text directly
+                    </div>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PDF Uploader */}
+          {inputType === 'pdf' && !uploadedFile && !inputText && !isConverting && !audioUrl && (
             <PDFUploader
               onFileUpload={handleFileUpload}
               onLoginRequired={() => setShowAuthModal(true)}
             />
           )}
 
-          {uploadedFile && !isConverting && !audioUrl && (
-            <div className="space-y-6">
-              {/* File Info */}
+          {/* Text Input */}
+          {inputType === 'text' && !uploadedFile && !showSettings && !isConverting && !audioUrl && (
+            <div className="max-w-2xl mx-auto">
+              <div className="bg-card p-6 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-4">Enter Your Text</h3>
+                <textarea
+                  value={inputText}
+                  onChange={(e) => handleTextChange(e.target.value)}
+                  placeholder="Type or paste your text here (max 1000 characters)..."
+                  className="w-full min-h-[200px] p-4 border border-input rounded-lg resize-y bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+                  maxLength={1000}
+                />
+                <div className="mt-4 flex justify-between items-center">
+                  <div className="text-sm text-muted-foreground">
+                    <span>{inputText.length} / 1000 characters</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setInputType('pdf')}
+                      className="text-sm text-primary hover:underline"
+                    >
+                      Switch to PDF upload
+                    </button>
+                    {inputText.trim().length >= 10 && (
+                      <Button
+                        onClick={() => {
+                          setShowSettings(true);
+                          // Scroll to settings section
+                          setTimeout(() => {
+                            const settingsSection = document.getElementById('voice-settings-section');
+                            if (settingsSection) {
+                              settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }, 100);
+                        }}
+                        className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium hover:bg-primary/90 transition-all"
+                      >
+                        Continue to Settings
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {((uploadedFile || (inputText && inputText.trim().length >= 10 && showSettings))) && !isConverting && !audioUrl && (
+            <div className="space-y-6" id="voice-settings-section">
+              {/* File/Text Info */}
               <div className="text-center">
                 <div className="bg-card p-6 rounded-lg border relative group">
                   <button
                     onClick={() => {
                       setUploadedFile(null);
+                      setInputText('');
                       if (typeof window !== "undefined") {
                         localStorage.removeItem("uploadedFileData");
                         localStorage.removeItem("uploadedFileName");
+                        localStorage.removeItem("inputText");
                       }
                     }}
                     className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity border border-input bg-background hover:bg-accent hover:text-accent-foreground rounded-md px-3 py-2 text-sm font-medium flex items-center gap-2"
-                    aria-label="Remove file"
+                    aria-label="Remove"
                   >
                     <FaTimes className="w-3 h-3" />
-                    Remove File
+                    Clear
                   </button>
-                  <h3 className="text-lg font-semibold mb-2">File Ready</h3>
-                  <p className="text-muted-foreground mb-4">
-                    {uploadedFile.name} (
-                    {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
-                  </p>
+                  <h3 className="text-lg font-semibold mb-2">
+                    {uploadedFile ? 'File Ready' : 'Text Ready'}
+                  </h3>
+                  {uploadedFile ? (
+                    <p className="text-muted-foreground mb-4">
+                      {uploadedFile.name} (
+                      {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
+                    </p>
+                  ) : (
+                    <div className="text-muted-foreground mb-4">
+                      <p className="mb-2">{inputText.length} characters ready to convert</p>
+                      <div className="max-w-2xl mx-auto mt-4 p-4 bg-muted/50 rounded-lg text-left">
+                        <p className="text-sm font-medium mb-2">Text Preview:</p>
+                        <p className="text-sm line-clamp-3">{inputText}</p>
+                      </div>
+                      <button
+                        onClick={() => setShowSettings(false)}
+                        className="mt-3 text-sm text-primary hover:underline"
+                      >
+                        Edit Text
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -731,7 +922,7 @@ export default function Home() {
                   onClick={handleStartOver}
                   className="bg-secondary text-secondary-foreground px-6 py-3 rounded-lg font-medium hover:bg-secondary/90 transition-colors"
                 >
-                  Convert Another PDF
+                  Convert Another {uploadedFile ? 'PDF' : 'Text'}
                 </button>
               </div>
             </div>

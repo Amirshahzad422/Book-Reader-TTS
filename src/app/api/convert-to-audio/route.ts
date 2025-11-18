@@ -13,70 +13,107 @@ interface VoiceSettings {
 
 // Dynamic PDF text extraction using pdf-parse
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
+  let pdfjsError: Error | null = null;
+  let pdfParseError: Error | null = null;
+
+  // First, try pdfjs-dist (better RTL, works better in serverless)
   try {
-    console.log('Starting PDF text extraction with pdf-parse...');
-
-    // First, try pdfjs-dist (better RTL)
-    try {
-      const req = eval('require');
-      const pdfjsLib = req('pdfjs-dist/legacy/build/pdf.js');
-      if (pdfjsLib) {
-        try { pdfjsLib.GlobalWorkerOptions.workerSrc = undefined; } catch {}
-        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
-        const doc = await loadingTask.promise;
-        let fullText = '';
-        for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-          const page = await doc.getPage(pageNum);
-          const content = await page.getTextContent();
-          const strings = content.items.map((item: any) => (item?.str ?? ''));
-          const pageText = strings.join(' ').replace(/\s{2,}/g, ' ').trim();
-          if (pageText) fullText += (fullText ? '\n\n' : '') + pageText;
-        }
-        if (fullText && fullText.length >= 10) {
-          console.log('PDF parsed successfully via pdfjs-dist');
-          let text = fullText;
-          // Normalization below
-          text = text
-            .normalize('NFKC')
-            .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '')
-            .replace(/[\t]+/g, ' ')
-            .replace(/\s+\n/g, '\n')
-            .replace(/\n\s+/g, '\n')
-            .replace(/[ \t]{2,}/g, ' ');
-          for (let i = 0; i < 3; i++) {
-            const before = text;
-            text = text.replace(/([\u0600-\u06FF])\s+([\u0600-\u06FF])/g, '$1$2');
-            if (text === before) break;
-          }
-          text = text
-            .split(/\r?\n/)
-            .map((line) => {
-              const arabicCount = (line.match(/[\u0600-\u06FF]/g) || []).length;
-              const letterCount = (line.match(/[\p{L}]/gu) || []).length || 1;
-              const ratio = arabicCount / letterCount;
-              if (ratio >= 0.6) {
-                const tokens = line.split(/\s+/);
-                return tokens.reverse().join(' ');
-              }
-              return line;
-            })
-            .join('\n')
-            .trim();
-
-          return text;
-        }
-      }
-    } catch {}
-
+    console.log('Attempting PDF extraction with pdfjs-dist...');
+    // Use require for serverless compatibility (works in both environments)
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParseMod = require('pdf-parse');
+    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
+    if (pdfjsLib) {
+      // Disable worker for serverless environments
+      if (pdfjsLib.GlobalWorkerOptions) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+      }
+      
+      const loadingTask = pdfjsLib.getDocument({ 
+        data: new Uint8Array(buffer),
+        useSystemFonts: true,
+        verbosity: 0, // Suppress warnings
+      });
+      
+      const doc = await loadingTask.promise;
+      let fullText = '';
+      
+      for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+        const page = await doc.getPage(pageNum);
+        const content = await page.getTextContent();
+        const strings = content.items.map((item: any) => (item?.str ?? ''));
+        const pageText = strings.join(' ').replace(/\s{2,}/g, ' ').trim();
+        if (pageText) fullText += (fullText ? '\n\n' : '') + pageText;
+      }
+      
+      if (fullText && fullText.length >= 10) {
+        console.log('PDF parsed successfully via pdfjs-dist');
+        let text = fullText;
+        // Normalization below
+        text = text
+          .normalize('NFKC')
+          .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '')
+          .replace(/[\t]+/g, ' ')
+          .replace(/\s+\n/g, '\n')
+          .replace(/\n\s+/g, '\n')
+          .replace(/[ \t]{2,}/g, ' ');
+        for (let i = 0; i < 3; i++) {
+          const before = text;
+          text = text.replace(/([\u0600-\u06FF])\s+([\u0600-\u06FF])/g, '$1$2');
+          if (text === before) break;
+        }
+        text = text
+          .split(/\r?\n/)
+          .map((line) => {
+            const arabicCount = (line.match(/[\u0600-\u06FF]/g) || []).length;
+            const letterCount = (line.match(/[\p{L}]/gu) || []).length || 1;
+            const ratio = arabicCount / letterCount;
+            if (ratio >= 0.6) {
+              const tokens = line.split(/\s+/);
+              return tokens.reverse().join(' ');
+            }
+            return line;
+          })
+          .join('\n')
+          .trim();
 
+        return text;
+      }
+    }
+  } catch (error) {
+    pdfjsError = error instanceof Error ? error : new Error(String(error));
+    console.error('pdfjs-dist extraction failed:', pdfjsError.message);
+    // Continue to pdf-parse fallback
+  }
+
+  // Fallback to pdf-parse
+  try {
+    console.log('Attempting PDF extraction with pdf-parse...');
     const data = new Uint8Array(buffer);
     console.log(`PDF buffer size: ${data.byteLength} bytes`);
 
+    // Use dynamic require for better serverless compatibility
+    let pdfParseMod: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      pdfParseMod = require('pdf-parse');
+    } catch (requireError) {
+      throw new Error(`Failed to load pdf-parse module: ${requireError instanceof Error ? requireError.message : String(requireError)}`);
+    }
+
+    if (!pdfParseMod) {
+      throw new Error('pdf-parse module is undefined');
+    }
+
     console.log('Calling pdf-parse...');
     let text = '';
-    const fn = (typeof pdfParseMod === 'function') ? pdfParseMod : (typeof pdfParseMod?.default === 'function') ? pdfParseMod.default : null;
+    
+    // Try different export shapes
+    const fn = (typeof pdfParseMod === 'function') 
+      ? pdfParseMod 
+      : (typeof pdfParseMod?.default === 'function') 
+        ? pdfParseMod.default 
+        : null;
+        
     if (fn) {
       const result = await fn(data);
       text = result?.text || '';
@@ -86,14 +123,17 @@ async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
       const result = await parser.getText();
       text = result?.text || '';
     } else {
-      console.error('pdf-parse export keys:', Object.keys(pdfParseMod || {}));
-      throw new Error('Unsupported pdf-parse export shape.');
+      const availableKeys = Object.keys(pdfParseMod || {});
+      console.error('pdf-parse export keys:', availableKeys);
+      throw new Error(`Unsupported pdf-parse export shape. Available keys: ${availableKeys.join(', ')}`);
     }
 
-    console.log('PDF parsed successfully');
-
+    console.log('PDF parsed successfully via pdf-parse');
     console.log(`Extracted text length: ${text.length} characters`);
-    console.log(`First 200 characters: ${text.substring(0, 200)}...`);
+    
+    if (text.length > 0) {
+      console.log(`First 200 characters: ${text.substring(0, 200)}...`);
+    }
 
     if (text.length < 10) {
       throw new Error('Extracted text is too short or PDF may be image-based');
@@ -138,23 +178,25 @@ async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
     return text;
 
   } catch (error) {
-    console.error('Error extracting text from PDF:', error);
-    // Type-safe error handling
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorName = error instanceof Error ? error.name : 'Error';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-    console.error('Error details:', { name: errorName, message: errorMessage, stack: errorStack });
-
-    try {
-      console.log('Attempting fallback text extraction...');
-      const fallbackText = `PDF text extraction failed. Please try a different file or ensure the PDF contains selectable text.`;
-      console.log(`Using fallback text: ${fallbackText.length} characters`);
-      return fallbackText;
-    } catch (fallbackError) {
-      console.error('Fallback extraction also failed:', fallbackError);
-      throw new Error('Failed to extract text from PDF. Please ensure the PDF contains readable text.');
-    }
+    pdfParseError = error instanceof Error ? error : new Error(String(error));
+    console.error('pdf-parse extraction failed:', pdfParseError.message);
+    console.error('pdf-parse error stack:', pdfParseError.stack);
   }
+
+  // Both methods failed - throw detailed error
+  const errorDetails = {
+    pdfjsError: pdfjsError?.message || 'No error captured',
+    pdfParseError: pdfParseError?.message || 'No error captured',
+    bufferSize: buffer.byteLength,
+  };
+  
+  console.error('Both PDF extraction methods failed:', errorDetails);
+  
+  throw new Error(
+    `PDF text extraction failed. pdfjs-dist error: ${pdfjsError?.message || 'unknown'}. ` +
+    `pdf-parse error: ${pdfParseError?.message || 'unknown'}. ` +
+    `Please ensure the PDF contains selectable text and try again.`
+  );
 }
 
 // Simple language detection by script ranges (dominant for the whole document)
@@ -202,7 +244,8 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
-    const file = formData.get('pdf') as File;
+    const file = formData.get('pdf') as File | null;
+    const inputText = formData.get('text') as string | null;
     const selectedVoice = formData.get('voice') as string || 'fable';
     const instructions = formData.get('instructions') as string || undefined;
     const speedStr = formData.get('speed') as string;
@@ -214,8 +257,17 @@ export async function POST(request: NextRequest) {
     const intonation = formData.get('intonation') as string || 'Natural';
     const customInstructions = formData.get('customInstructions') as string || undefined;
 
-    if (!file) {
-      return NextResponse.json({ error: 'No PDF file provided' }, { status: 400 });
+    // Validate that either PDF or text is provided
+    if (!file && !inputText) {
+      return NextResponse.json({ error: 'No PDF file or text provided' }, { status: 400 });
+    }
+
+    if (inputText && inputText.trim().length === 0) {
+      return NextResponse.json({ error: 'Text input is empty' }, { status: 400 });
+    }
+
+    if (inputText && inputText.length > 1000) {
+      return NextResponse.json({ error: 'Text input exceeds 1000 character limit' }, { status: 400 });
     }
 
     // Validate voice option
@@ -240,9 +292,15 @@ export async function POST(request: NextRequest) {
     console.log('   - Intonation:', intonation);
     console.log('   - Custom Instructions:', customInstructions || '(none)');
     console.log('');
-    console.log('📄 File Info:');
-    console.log('   - Name:', file.name);
-    console.log('   - Size:', (file.size / 1024).toFixed(2), 'KB');
+    console.log('📄 Input Info:');
+    if (file) {
+      console.log('   - Type: PDF File');
+      console.log('   - Name:', file.name);
+      console.log('   - Size:', (file.size / 1024).toFixed(2), 'KB');
+    } else if (inputText) {
+      console.log('   - Type: Text Input');
+      console.log('   - Length:', inputText.length, 'characters');
+    }
     console.log('═══════════════════════════════════════════════════');
 
     try {
@@ -250,14 +308,26 @@ export async function POST(request: NextRequest) {
         apiKey: API_KEY,
       });
 
-      // Convert File to ArrayBuffer
-      const arrayBuffer = await file.arrayBuffer();
-
-      // Extract text from PDF
-      const rawText = await extractTextFromPDF(arrayBuffer);
+      // Get text from PDF or use provided text
+      let rawText: string;
+      
+      if (file) {
+        // Convert File to ArrayBuffer
+        const arrayBuffer = await file.arrayBuffer();
+        // Extract text from PDF
+        rawText = await extractTextFromPDF(arrayBuffer);
+      } else if (inputText) {
+        // Use provided text directly
+        rawText = inputText.trim();
+      } else {
+        return NextResponse.json({ error: 'No input provided' }, { status: 400 });
+      }
 
       if (!rawText || rawText.trim().length < 10) {
-        return NextResponse.json({ error: 'Could not extract readable text from PDF' }, { status: 400 });
+        const errorMsg = file 
+          ? 'Could not extract readable text from PDF' 
+          : 'Text input is too short (minimum 10 characters)';
+        return NextResponse.json({ error: errorMsg }, { status: 400 });
       }
 
       // Clean and process the text

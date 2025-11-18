@@ -1,10 +1,18 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['pdf-parse'],
+  // Don't externalize pdf-parse - let it bundle for serverless compatibility
+  // serverExternalPackages: ['pdf-parse'],
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals.push('pdf-parse');
+      // Ensure pdf-parse and pdfjs-dist are properly bundled
+      config.resolve.alias = {
+        ...config.resolve.alias,
+      };
+      // Don't externalize - bundle for serverless
+      // config.externals = config.externals.filter((external) => {
+      //   return external !== 'pdf-parse';
+      // });
     }
     return config;
   },
