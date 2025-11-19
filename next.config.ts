@@ -3,10 +3,9 @@ import webpack from "webpack";
 import path from "path";
 
 const nextConfig: NextConfig = {
-  // pdf-parse and pdfjs-dist should be bundled, not externalized
-  // This ensures it works in serverless environments
-  // Note: By not adding pdfjs-dist to serverComponentsExternalPackages,
-  // it will be bundled into the serverless function
+  experimental: {
+    serverComponentsExternalPackages: ["pdfjs-dist"],
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       // Replace worker file imports with mock to prevent module resolution errors

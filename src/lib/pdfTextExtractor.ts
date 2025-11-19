@@ -1,28 +1,6 @@
 const MIN_TEXT_LENGTH = 10;
 let pdfjsPromise: Promise<any> | null = null;
-
-// Use a more reliable import method for serverless environments
-// This function ensures pdfjs-dist is loaded correctly in both dev and production
-async function loadPdfjs(): Promise<any> {
-  try {
-    // Use dynamic import with explicit path resolution
-    // Try the legacy build which is more compatible with serverless environments
-    const pdfjsModule = await import('pdfjs-dist/legacy/build/pdf.mjs');
-    // pdfjs-dist exports its API directly, not as default
-    return pdfjsModule;
-  } catch (error) {
-    // Fallback: try the main build
-    try {
-      const pdfjsModule = await import('pdfjs-dist');
-      return pdfjsModule;
-    } catch (fallbackError) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Failed to load pdfjs-dist. Please ensure pdfjs-dist is installed and bundled correctly. Details: ${errorMessage}`
-      );
-    }
-  }
-}
+const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<any>;
 
 export function normalizeExtracted(text: string): string {
   text = text
@@ -61,7 +39,7 @@ export function normalizeExtracted(text: string): string {
 
 export async function extractTextFromPdfBuffer(buffer: ArrayBuffer): Promise<string> {
   if (!pdfjsPromise) {
-    pdfjsPromise = loadPdfjs();
+    pdfjsPromise = dynamicImport('pdfjs-dist/legacy/build/pdf.mjs');
   }
 
   let pdfjsLib: any;
@@ -69,9 +47,8 @@ export async function extractTextFromPdfBuffer(buffer: ArrayBuffer): Promise<str
     pdfjsLib = await pdfjsPromise;
   } catch (error) {
     pdfjsPromise = null;
-    const errorMessage = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Failed to load pdfjs-dist. Please reinstall the dependency. Details: ${errorMessage}`
+      `Failed to load pdfjs-dist. Please reinstall the dependency. Details: ${(error as Error).message}`
     );
   }
 
