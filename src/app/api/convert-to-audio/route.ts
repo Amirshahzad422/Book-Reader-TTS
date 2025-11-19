@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { cleanAndProcessText, optimizeTextForSpeech, splitTextIntoChunks } from '@/lib/textProcessing';
+import { extractTextFromPdfBuffer } from '@/lib/pdfTextExtractor';
 
 // Define the OpenAI voice type
 type OpenAIVoice = 'alloy' | 'ash' | 'coral' | 'echo' | 'fable' | 'nova' | 'onyx' | 'sage' | 'shimmer';
@@ -11,192 +12,19 @@ interface VoiceSettings {
   speed?: number;
 }
 
-// Dynamic PDF text extraction using pdf-parse
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<string> {
-  let pdfjsError: Error | null = null;
-  let pdfParseError: Error | null = null;
-
-  // First, try pdfjs-dist (better RTL, works better in serverless)
   try {
-    console.log('Attempting PDF extraction with pdfjs-dist...');
-    // Use require for serverless compatibility (works in both environments)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
-    if (pdfjsLib) {
-      // Disable worker for serverless environments
-      if (pdfjsLib.GlobalWorkerOptions) {
-        pdfjsLib.GlobalWorkerOptions.workerSrc = '';
-      }
-      
-      const loadingTask = pdfjsLib.getDocument({ 
-        data: new Uint8Array(buffer),
-        useSystemFonts: true,
-        verbosity: 0, // Suppress warnings
-      });
-      
-      const doc = await loadingTask.promise;
-      let fullText = '';
-      
-      for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
-        const page = await doc.getPage(pageNum);
-        const content = await page.getTextContent();
-        const strings = content.items.map((item: any) => (item?.str ?? ''));
-        const pageText = strings.join(' ').replace(/\s{2,}/g, ' ').trim();
-        if (pageText) fullText += (fullText ? '\n\n' : '') + pageText;
-      }
-      
-      if (fullText && fullText.length >= 10) {
-        console.log('PDF parsed successfully via pdfjs-dist');
-        let text = fullText;
-        // Normalization below
-        text = text
-          .normalize('NFKC')
-          .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '')
-          .replace(/[\t]+/g, ' ')
-          .replace(/\s+\n/g, '\n')
-          .replace(/\n\s+/g, '\n')
-          .replace(/[ \t]{2,}/g, ' ');
-        for (let i = 0; i < 3; i++) {
-          const before = text;
-          text = text.replace(/([\u0600-\u06FF])\s+([\u0600-\u06FF])/g, '$1$2');
-          if (text === before) break;
-        }
-        text = text
-          .split(/\r?\n/)
-          .map((line) => {
-            const arabicCount = (line.match(/[\u0600-\u06FF]/g) || []).length;
-            const letterCount = (line.match(/[\p{L}]/gu) || []).length || 1;
-            const ratio = arabicCount / letterCount;
-            if (ratio >= 0.6) {
-              const tokens = line.split(/\s+/);
-              return tokens.reverse().join(' ');
-            }
-            return line;
-          })
-          .join('\n')
-          .trim();
-
-        return text;
-      }
-    }
-  } catch (error) {
-    pdfjsError = error instanceof Error ? error : new Error(String(error));
-    console.error('pdfjs-dist extraction failed:', pdfjsError.message);
-    // Continue to pdf-parse fallback
-  }
-
-  // Fallback to pdf-parse
-  try {
-    console.log('Attempting PDF extraction with pdf-parse...');
-    const data = new Uint8Array(buffer);
-    console.log(`PDF buffer size: ${data.byteLength} bytes`);
-
-    // Use dynamic require for better serverless compatibility
-    let pdfParseMod: any;
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      pdfParseMod = require('pdf-parse');
-    } catch (requireError) {
-      throw new Error(`Failed to load pdf-parse module: ${requireError instanceof Error ? requireError.message : String(requireError)}`);
-    }
-
-    if (!pdfParseMod) {
-      throw new Error('pdf-parse module is undefined');
-    }
-
-    console.log('Calling pdf-parse...');
-    let text = '';
-    
-    // Try different export shapes
-    const fn = (typeof pdfParseMod === 'function') 
-      ? pdfParseMod 
-      : (typeof pdfParseMod?.default === 'function') 
-        ? pdfParseMod.default 
-        : null;
-        
-    if (fn) {
-      const result = await fn(data);
-      text = result?.text || '';
-    } else if (typeof pdfParseMod?.PDFParse === 'function') {
-      const parser = new pdfParseMod.PDFParse(data);
-      await parser.load();
-      const result = await parser.getText();
-      text = result?.text || '';
-    } else {
-      const availableKeys = Object.keys(pdfParseMod || {});
-      console.error('pdf-parse export keys:', availableKeys);
-      throw new Error(`Unsupported pdf-parse export shape. Available keys: ${availableKeys.join(', ')}`);
-    }
-
-    console.log('PDF parsed successfully via pdf-parse');
-    console.log(`Extracted text length: ${text.length} characters`);
-    
-    if (text.length > 0) {
-      console.log(`First 200 characters: ${text.substring(0, 200)}...`);
-    }
-
-    if (text.length < 10) {
-      throw new Error('Extracted text is too short or PDF may be image-based');
-    }
-
-    // Normalize RTL
-    text = text
-      .normalize('NFKC')
-      .replace(/[\u200B-\u200F\u202A-\u202E\u2066-\u2069]/g, '')
-      .replace(/[\t]+/g, ' ')
-      .replace(/\s+\n/g, '\n')
-      .replace(/\n\s+/g, '\n')
-      .replace(/[ \t]{2,}/g, ' ');
-
-    // Only remove tabs/nbsp strictly inside Arabic letters (preserve normal spaces between words)
-    for (let i = 0; i < 3; i++) {
-      const before = text;
-      text = text
-        .replace(/([\u0600-\u06FF])[\t]+([\u0600-\u06FF])/g, '$1$2')
-        .replace(/([\u0600-\u06FF])[\u00A0]+([\u0600-\u06FF])/g, '$1$2')
-        .replace(/([\u0600-\u06FF])[\u2000-\u200A]+([\u0600-\u06FF])/g, '$1$2');
-      if (text === before) break;
-    }
-
-    // For each line, if Arabic-dominant, reverse token order (not characters)
-    text = text
-      .split(/\r?\n/)
-      .map((line) => {
-        const arabicCount = (line.match(/[\u0600-\u06FF]/g) || []).length;
-        const letterCount = (line.match(/[\p{L}]/gu) || []).length || 1;
-        const ratio = arabicCount / letterCount;
-        if (ratio >= 0.6) {
-          const tokens = line.split(/\s+/).filter(Boolean);
-          return tokens.reverse().join(' ');
-        }
-        return line;
-      })
-      .join('\n');
-
-    text = text.trim();
-
+    const text = await extractTextFromPdfBuffer(buffer);
+    console.log('PDF parsed successfully via pdfjs-dist');
     return text;
-
   } catch (error) {
-    pdfParseError = error instanceof Error ? error : new Error(String(error));
-    console.error('pdf-parse extraction failed:', pdfParseError.message);
-    console.error('pdf-parse error stack:', pdfParseError.stack);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('PDF extraction failed:', errorMessage);
+    throw new Error(
+      `PDF text extraction failed. Error: ${errorMessage}. ` +
+      `Please ensure the PDF contains selectable text and try again.`
+    );
   }
-
-  // Both methods failed - throw detailed error
-  const errorDetails = {
-    pdfjsError: pdfjsError?.message || 'No error captured',
-    pdfParseError: pdfParseError?.message || 'No error captured',
-    bufferSize: buffer.byteLength,
-  };
-  
-  console.error('Both PDF extraction methods failed:', errorDetails);
-  
-  throw new Error(
-    `PDF text extraction failed. pdfjs-dist error: ${pdfjsError?.message || 'unknown'}. ` +
-    `pdf-parse error: ${pdfParseError?.message || 'unknown'}. ` +
-    `Please ensure the PDF contains selectable text and try again.`
-  );
 }
 
 // Simple language detection by script ranges (dominant for the whole document)
@@ -459,18 +287,29 @@ export async function POST(request: NextRequest) {
 
     } catch (error) {
       console.error('❌ API call failed:', error);
+      if (error instanceof Error) {
+        console.error('API Error Details:', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
+      }
       throw error;
     }
 
   } catch (error) {
-    console.error('Error converting PDF to audio:', error);
+    console.error('❌ Error converting PDF to audio:', error);
     
-    // Enhanced OpenAI error handling
+    // Log detailed error information
     if (error instanceof Error) {
+      console.error('Error name:', error.name);
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+      
       const errorMessage = error.message.toLowerCase();
       
       // API Key issues
-      if (errorMessage.includes('api key') || errorMessage.includes('unauthorized')) {
+      if (errorMessage.includes('api key') || errorMessage.includes('unauthorized') || errorMessage.includes('401')) {
         return NextResponse.json({ 
           error: 'OpenAI API key not configured or invalid. Please check your OPENAI_API_KEY in environment variables.' 
         }, { status: 401 });
@@ -498,16 +337,35 @@ export async function POST(request: NextRequest) {
       }
       
       // Model or service issues
-      if (errorMessage.includes('model') || errorMessage.includes('service')) {
+      if (errorMessage.includes('model') || errorMessage.includes('service') || errorMessage.includes('503')) {
         return NextResponse.json({ 
           error: 'OpenAI service temporarily unavailable. Please try again in a few minutes.' 
         }, { status: 503 });
       }
+      
+      // PDF extraction errors (including worker errors)
+      if (errorMessage.includes('pdf') || 
+          errorMessage.includes('extract') || 
+          errorMessage.includes('text extraction') ||
+          errorMessage.includes('worker') ||
+          errorMessage.includes('pdf.worker') ||
+          errorMessage.includes('cannot find module')) {
+        return NextResponse.json({ 
+          error: `PDF text extraction failed: ${error.message}. Please ensure the PDF contains selectable text.` 
+        }, { status: 400 });
+      }
+      
+      // Return the actual error message for debugging
+      return NextResponse.json({ 
+        error: `Conversion failed: ${error.message}. Please check the server logs for more details.` 
+      }, { status: 500 });
     }
 
-    // Generic error
+    // Generic error with more details
+    const errorString = String(error);
+    console.error('Unknown error type:', errorString);
     return NextResponse.json({ 
-      error: 'Failed to convert PDF to audio. Please check your internet connection and try again.' 
+      error: `Failed to convert to audio: ${errorString}. Please check your internet connection and try again.` 
     }, { status: 500 });
   }
 }

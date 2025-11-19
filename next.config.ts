@@ -1,18 +1,20 @@
 import type { NextConfig } from "next";
+import webpack from "webpack";
+import path from "path";
 
 const nextConfig: NextConfig = {
-  // Don't externalize pdf-parse - let it bundle for serverless compatibility
-  // serverExternalPackages: ['pdf-parse'],
+  // pdf-parse should be bundled, not externalized
+  // This ensures it works in serverless environments
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Ensure pdf-parse and pdfjs-dist are properly bundled
-      config.resolve.alias = {
-        ...config.resolve.alias,
-      };
-      // Don't externalize - bundle for serverless
-      // config.externals = config.externals.filter((external) => {
-      //   return external !== 'pdf-parse';
-      // });
+      // Replace worker file imports with mock to prevent module resolution errors
+      config.plugins = config.plugins || [];
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /pdf\.worker\.(min\.)?(mjs|js)$/,
+          path.resolve(__dirname, 'pdf-worker-mock.js')
+        )
+      );
     }
     return config;
   },

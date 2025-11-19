@@ -25,6 +25,14 @@ interface VoiceSettingsProps {
   };
 }
 
+type SettingsOverrides = Partial<{
+  speed: number;
+  emotionalRange: string;
+  tone: string;
+  intonation: string;
+  customInstructions: string;
+}>;
+
 const EMOTIONAL_RANGES = [
   "Natural",
   "Cheerful and upbeat",
@@ -209,33 +217,47 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
 
   const clampSpeed = (s: number) => Math.max(0.5, Math.min(2.0, parseFloat(s.toFixed(1))));
 
-  const updateSettings = () => {
+  const buildSettingsPayload = (overrides: SettingsOverrides = {}) => {
+    const nextSpeed = overrides.speed ?? speed;
+    const nextEmotionalRange = overrides.emotionalRange ?? emotionalRange;
+    const nextTone = overrides.tone ?? tone;
+    const nextIntonation = overrides.intonation ?? intonation;
+    const rawCustomInstructions =
+      overrides.customInstructions !== undefined
+        ? overrides.customInstructions
+        : customInstructions;
+    const trimmedCustomInstructions = rawCustomInstructions?.trim?.() ?? "";
+
     const instructions: string[] = [];
 
-    if (emotionalRange !== "Natural") {
-      instructions.push(emotionalRange.toLowerCase());
+    if (nextEmotionalRange !== "Natural") {
+      instructions.push(nextEmotionalRange.toLowerCase());
     }
-    if (tone !== "Natural") {
-      instructions.push(tone.toLowerCase());
+    if (nextTone !== "Natural") {
+      instructions.push(nextTone.toLowerCase());
     }
-    if (intonation !== "Natural") {
-      instructions.push(intonation.toLowerCase());
+    if (nextIntonation !== "Natural") {
+      instructions.push(nextIntonation.toLowerCase());
     }
-    if (customInstructions && customInstructions.trim()) {
-      instructions.push(customInstructions.trim());
+    if (trimmedCustomInstructions) {
+      instructions.push(trimmedCustomInstructions);
     }
 
     const fullInstructions =
       instructions.length > 0 ? instructions.join(". ") + "." : undefined;
 
-    onSettingsChange({
+    return {
       instructions: fullInstructions,
-      speed: speed,
-      emotionalRange: emotionalRange,
-      tone: tone,
-      intonation: intonation,
-      customInstructions: customInstructions.trim() || undefined,
-    });
+      speed: nextSpeed,
+      emotionalRange: nextEmotionalRange,
+      tone: nextTone,
+      intonation: nextIntonation,
+      customInstructions: trimmedCustomInstructions || undefined,
+    };
+  };
+
+  const emitSettings = (overrides: SettingsOverrides = {}) => {
+    onSettingsChange(buildSettingsPayload(overrides));
   };
   
   // Initialize from initialSettings ONLY on first mount (when component is created)
@@ -258,10 +280,13 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
       if (initialSettings.customInstructions !== undefined) {
         setCustomInstructions(initialSettings.customInstructions);
       }
-      // Trigger updateSettings after initial state is set
-      setTimeout(() => {
-        updateSettings();
-      }, 100);
+      emitSettings({
+        speed: initialSettings.speed,
+        emotionalRange: initialSettings.emotionalRange,
+        tone: initialSettings.tone,
+        intonation: initialSettings.intonation,
+        customInstructions: initialSettings.customInstructions,
+      });
     }
   }, []); // Only run once on mount
 
@@ -524,8 +549,9 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
   };
 
   const handleSpeedChange = (newSpeed: number) => {
-    setSpeed(clampSpeed(newSpeed));
-    setTimeout(updateSettings, 100);
+    const clamped = clampSpeed(newSpeed);
+    setSpeed(clamped);
+    emitSettings({ speed: clamped });
   };
 
   const incrementSpeed = (delta: number) => {
@@ -534,81 +560,74 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
 
   const handleEmotionalRangeChange = (value: string) => {
     setEmotionalRange(value);
-    setTimeout(() => {
-      updateSettings();
-      // Only play on explicit user change
-      playPreviewFor(value);
-    }, 100);
+    emitSettings({ emotionalRange: value });
+    playPreviewFor(value);
   };
 
   const handleToneChange = (value: string) => {
     setTone(value);
-    setTimeout(() => {
-      updateSettings();
-      // Tone preview play on user change
-      stopAllPreviews(); // Stop all other previews first
-      const src = toTonePreviewFilename(value);
-      setTonePreviewSrc(src);
-      setIsTonePreviewLoading(true);
-      try {
-        if (toneAudioRef.current) {
-          toneAudioRef.current.pause();
-          toneAudioRef.current.currentTime = 0;
-        }
-        const audio = new Audio(src);
-        toneAudioRef.current = audio;
-        audio.onended = () => setIsTonePreviewPlaying(false);
-        audio.oncanplay = () => setIsTonePreviewLoading(false);
-        audio.onerror = () => {
-          setIsTonePreviewLoading(false);
-          setIsTonePreviewPlaying(false);
-        };
-        audio.play().then(() => setIsTonePreviewPlaying(true)).catch(() => setIsTonePreviewPlaying(false));
-      } catch {
-        setIsTonePreviewPlaying(false);
-        setIsTonePreviewLoading(false);
+    emitSettings({ tone: value });
+    // Tone preview play on user change
+    stopAllPreviews(); // Stop all other previews first
+    const src = toTonePreviewFilename(value);
+    setTonePreviewSrc(src);
+    setIsTonePreviewLoading(true);
+    try {
+      if (toneAudioRef.current) {
+        toneAudioRef.current.pause();
+        toneAudioRef.current.currentTime = 0;
       }
-    }, 100);
+      const audio = new Audio(src);
+      toneAudioRef.current = audio;
+      audio.onended = () => setIsTonePreviewPlaying(false);
+      audio.oncanplay = () => setIsTonePreviewLoading(false);
+      audio.onerror = () => {
+        setIsTonePreviewLoading(false);
+        setIsTonePreviewPlaying(false);
+      };
+      audio.play().then(() => setIsTonePreviewPlaying(true)).catch(() => setIsTonePreviewPlaying(false));
+    } catch {
+      setIsTonePreviewPlaying(false);
+      setIsTonePreviewLoading(false);
+    }
   };
 
   const handleIntonationChange = (value: string) => {
     setIntonation(value);
-    setTimeout(() => {
-      updateSettings();
-      // Intonation preview play on user change
-      stopAllPreviews(); // Stop all other previews first
-      const src = toIntonationPreviewFilename(value);
-      setIntonationPreviewSrc(src);
-      setIsIntonationPreviewLoading(true);
-      try {
-        if (intonationAudioRef.current) {
-          intonationAudioRef.current.pause();
-          intonationAudioRef.current.currentTime = 0;
-        }
-        const audio = new Audio(src);
-        intonationAudioRef.current = audio;
-        audio.onended = () => setIsIntonationPreviewPlaying(false);
-        audio.oncanplay = () => setIsIntonationPreviewLoading(false);
-        audio.onerror = () => {
-          setIsIntonationPreviewLoading(false);
-          setIsIntonationPreviewPlaying(false);
-        };
-        audio.play().then(() => setIsIntonationPreviewPlaying(true)).catch(() => setIsIntonationPreviewPlaying(false));
-      } catch {
-        setIsIntonationPreviewPlaying(false);
-        setIsIntonationPreviewLoading(false);
+    emitSettings({ intonation: value });
+    // Intonation preview play on user change
+    stopAllPreviews(); // Stop all other previews first
+    const src = toIntonationPreviewFilename(value);
+    setIntonationPreviewSrc(src);
+    setIsIntonationPreviewLoading(true);
+    try {
+      if (intonationAudioRef.current) {
+        intonationAudioRef.current.pause();
+        intonationAudioRef.current.currentTime = 0;
       }
-    }, 100);
+      const audio = new Audio(src);
+      intonationAudioRef.current = audio;
+      audio.onended = () => setIsIntonationPreviewPlaying(false);
+      audio.oncanplay = () => setIsIntonationPreviewLoading(false);
+      audio.onerror = () => {
+        setIsIntonationPreviewLoading(false);
+        setIsIntonationPreviewPlaying(false);
+      };
+      audio.play().then(() => setIsIntonationPreviewPlaying(true)).catch(() => setIsIntonationPreviewPlaying(false));
+    } catch {
+      setIsIntonationPreviewPlaying(false);
+      setIsIntonationPreviewLoading(false);
+    }
   };
 
   const handleCustomInstructionsChange = (value: string) => {
     setCustomInstructions(value);
-    setTimeout(updateSettings, 100);
+    emitSettings({ customInstructions: value });
   };
 
   const applyPresetInstruction = (text: string) => {
     setCustomInstructions(text);
-    setTimeout(updateSettings, 100);
+    emitSettings({ customInstructions: text });
   };
 
   return (
@@ -887,7 +906,12 @@ export default function VoiceSettings({ onSettingsChange, initialSettings }: Voi
                       setTone(settings.Tone);
                       setIntonation(settings.Intonation);
                       setSpeed(settings.Speed);
-                      setTimeout(updateSettings, 0);
+                      emitSettings({
+                        emotionalRange: settings.EmotionalRange,
+                        tone: settings.Tone,
+                        intonation: settings.Intonation,
+                        speed: settings.Speed,
+                      });
                     }}
                   >
                     Apply

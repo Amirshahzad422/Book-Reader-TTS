@@ -35,8 +35,8 @@ export default function Home() {
     }
     return "fable";
   });
-  const [voiceSettings, setVoiceSettings] = useState<{ 
-    instructions?: string; 
+  const [voiceSettings, setVoiceSettings] = useState<{
+    instructions?: string;
     speed: number;
     emotionalRange?: string;
     tone?: string;
@@ -55,14 +55,6 @@ export default function Home() {
   const [textLength, setTextLength] = useState<number | undefined>();
   const [showConversationsHistory, setShowConversationsHistory] = useState(false);
   const [fileRestored, setFileRestored] = useState(false);
-  const [initialVoiceSettings, setInitialVoiceSettings] = useState<{
-    speed?: number;
-    emotionalRange?: string;
-    tone?: string;
-    intonation?: string;
-    customInstructions?: string;
-  } | null>(null);
-
   // Restore file and settings from localStorage on mount
   useEffect(() => {
     if (typeof window === "undefined" || fileRestored) return;
@@ -86,13 +78,13 @@ export default function Home() {
           const blob = new Blob([byteArray], { type: 'audio/mpeg' });
           const audioUrl = URL.createObjectURL(blob);
           setAudioUrl(audioUrl);
-          
+
           // Restore metadata
           const savedLang = localStorage.getItem("convertedDetectedLanguage");
           const savedLength = localStorage.getItem("convertedTextLength");
           if (savedLang) setDetectedLanguage(savedLang);
           if (savedLength) setTextLength(parseInt(savedLength));
-          
+
           // Restore file
           const savedFileData = localStorage.getItem("convertedFileData");
           const savedFileName = localStorage.getItem("convertedFileName");
@@ -132,14 +124,6 @@ export default function Home() {
       if (savedSettings) {
         const parsed = JSON.parse(savedSettings);
         setVoiceSettings(parsed);
-        // Store initial settings for VoiceSettings component (only once)
-        setInitialVoiceSettings({
-          speed: parsed.speed,
-          emotionalRange: parsed.emotionalRange,
-          tone: parsed.tone,
-          intonation: parsed.intonation,
-          customInstructions: parsed.customInstructions,
-        });
         restoredAny = true;
       }
 
@@ -162,7 +146,7 @@ export default function Home() {
           if (savedFileData.includes(',')) {
             base64Data = savedFileData.split(',')[1];
           }
-          
+
           // Convert base64 back to File
           const byteCharacters = atob(base64Data);
           const byteNumbers = new Array(byteCharacters.length);
@@ -220,19 +204,19 @@ export default function Home() {
   // Check for expired email link error in URL hash
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
+
     const hash = window.location.hash || "";
     if (!hash) return;
-    
+
     const params = new URLSearchParams(hash.replace(/^#/, ""));
     const error = params.get("error");
     const errorCode = params.get("error_code");
-    
+
     if (error === "access_denied" && errorCode === "otp_expired") {
       // Get email from localStorage (stored during signup)
       const storedEmail = localStorage.getItem("pendingVerificationEmail");
       setExpiredLinkError({ email: storedEmail || undefined });
-      
+
       // Clean URL
       window.history.replaceState(null, document.title, window.location.pathname);
     }
@@ -262,7 +246,7 @@ export default function Home() {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         alert("✅ Verification email sent! Please check your inbox.");
         setExpiredLinkError(null);
@@ -324,7 +308,7 @@ export default function Home() {
     setConversionProgress(0);
     setDetectedLanguage(undefined);
     setTextLength(undefined);
-    
+
     // Clear ALL localStorage when user exits converted state
     if (typeof window !== "undefined") {
       localStorage.removeItem("uploadedFileData");
@@ -340,10 +324,23 @@ export default function Home() {
     }
   };
 
+  const minimumTextReady = inputText.trim().length >= 10;
+
+  const handleContinueToSettings = () => {
+    if (!minimumTextReady) return;
+    setShowSettings(true);
+    setTimeout(() => {
+      const settingsSection = document.getElementById('voice-settings-section');
+      if (settingsSection) {
+        settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
+  };
+
   const handleConvertToAudio = async () => {
     const hasFile = uploadedFile !== null;
     const hasText = inputText.trim().length > 0;
-    
+
     if (!hasFile && !hasText) {
       alert('Please upload a PDF file or enter text to convert.');
       return;
@@ -392,7 +389,7 @@ export default function Home() {
         return; // Stop execution - don't proceed with conversion
       }
     }
-    
+
     try {
       // Simulate progress updates
       const progressInterval = setInterval(() => {
@@ -406,14 +403,14 @@ export default function Home() {
       }, 500);
 
       const formData = new FormData();
-      
+
       // Add PDF or text based on input type
       if (hasFile && uploadedFile) {
         formData.append("pdf", uploadedFile);
       } else if (hasText) {
         formData.append("text", inputText.trim());
       }
-      
+
       formData.append("voice", selectedVoice);
 
       // Add voice settings if provided
@@ -497,6 +494,9 @@ export default function Home() {
         body: formData,
       });
 
+      console.log('API Response Status:', response.status, response.statusText);
+      console.log('API Response Headers:', Object.fromEntries(response.headers.entries()));
+
       clearInterval(progressInterval);
       setConversionProgress(100);
 
@@ -551,10 +551,24 @@ export default function Home() {
           }
         }
       } else {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: "Unknown error" }));
-        throw new Error(errorData.error || "Conversion failed");
+        // Get detailed error from response
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (jsonError) {
+          // If response is not JSON, get text
+          const textError = await response.text();
+          throw new Error(textError || `HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const errorMessage = errorData?.error || `HTTP ${response.status}: ${response.statusText}`;
+        console.error('API Error Response:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorMessage,
+          fullResponse: errorData
+        });
+        throw new Error(errorMessage);
       }
     } catch (error) {
       console.error("Error converting PDF to audio:", error);
@@ -572,14 +586,14 @@ export default function Home() {
       ) {
         alert(
           `🚨 All API Keys Quota Exceeded\n\n` +
-            `All your OpenAI API keys have hit their usage limits.\n\n` +
-            `Quick Solutions:\n` +
-            `• Add billing to your OpenAI accounts at platform.openai.com/account/billing\n` +
-            `• Add $5-10 to each account (very affordable)\n` +
-            `• Wait 1 hour if on free tier\n` +
-            `• Try with a smaller PDF (1-2 pages)\n\n` +
-            `Your app supports multiple API keys - just add billing and you're back online!\n\n` +
-            `Cost: ~$0.25 per PDF conversion (very cheap!)`
+          `All your OpenAI API keys have hit their usage limits.\n\n` +
+          `Quick Solutions:\n` +
+          `• Add billing to your OpenAI accounts at platform.openai.com/account/billing\n` +
+          `• Add $5-10 to each account (very affordable)\n` +
+          `• Wait 1 hour if on free tier\n` +
+          `• Try with a smaller PDF (1-2 pages)\n\n` +
+          `Your app supports multiple API keys - just add billing and you're back online!\n\n` +
+          `Cost: ~$0.25 per PDF conversion (very cheap!)`
         );
       } else if (errorMessage.includes("billing")) {
         alert(
@@ -682,7 +696,7 @@ export default function Home() {
 
         <div className="max-w-4xl mx-auto space-y-8">
           {/* Input Type Selector */}
-          {!uploadedFile && !inputText && !isConverting && !audioUrl && (
+          {!uploadedFile && !isConverting && !audioUrl && (
             <div className="max-w-2xl mx-auto space-y-4">
               {/* Subscription Info Banner */}
               {session && (
@@ -726,17 +740,16 @@ export default function Home() {
                   </div>
                 </div>
               )}
-              
+
               <div className="bg-card p-6 rounded-lg border">
                 <h3 className="text-lg font-semibold mb-4 text-center">Choose Input Type</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <button
                     onClick={() => setInputType('pdf')}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      inputType === 'pdf'
+                    className={`p-4 rounded-lg border-2 transition-all ${inputType === 'pdf'
                         ? 'border-primary bg-primary/5 scale-105'
                         : 'border-border hover:border-primary/50'
-                    }`}
+                      }`}
                   >
                     <FaFilePdf className="w-6 h-6 mx-auto mb-2 text-primary" />
                     <div className="font-semibold text-sm">Upload PDF</div>
@@ -746,11 +759,10 @@ export default function Home() {
                   </button>
                   <button
                     onClick={() => setInputType('text')}
-                    className={`p-4 rounded-lg border-2 transition-all ${
-                      inputType === 'text'
+                    className={`p-4 rounded-lg border-2 transition-all ${inputType === 'text'
                         ? 'border-primary bg-primary/5 scale-105'
                         : 'border-border hover:border-primary/50'
-                    }`}
+                      }`}
                   >
                     <FaKeyboard className="w-6 h-6 mx-auto mb-2 text-primary" />
                     <div className="font-semibold text-sm">Enter Text</div>
@@ -784,33 +796,27 @@ export default function Home() {
                   maxLength={1000}
                 />
                 <div className="mt-4 flex justify-between items-center">
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground w-full">
                     <span>{inputText.length} / 1000 characters</span>
                   </div>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => setInputType('pdf')}
-                      className="text-sm text-primary hover:underline"
-                    >
-                      Switch to PDF upload
-                    </button>
-                    {inputText.trim().length >= 10 && (
+                  <div className="flex gap-3 justify-end w-full">
+                    <div className="relative group inline-block">
                       <Button
-                        onClick={() => {
-                          setShowSettings(true);
-                          // Scroll to settings section
-                          setTimeout(() => {
-                            const settingsSection = document.getElementById('voice-settings-section');
-                            if (settingsSection) {
-                              settingsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                          }, 100);
-                        }}
-                        className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium hover:bg-primary/90 transition-all"
+                        onClick={handleContinueToSettings}
+                        disabled={!minimumTextReady}
+                        className="bg-primary text-primary-foreground px-6 py-2 rounded-lg font-medium hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Continue to Settings
+                        Continue to Conversion
                       </Button>
-                    )}
+
+                      {!minimumTextReady && (
+                        <span className="absolute -top-8 left-1/2 -translate-x-1/2 hidden group-hover:block 
+                     bg-black text-white text-xs px-2 py-1 rounded shadow whitespace-nowrap">
+                          Enter at least 10 characters
+                        </span>
+                      )}
+                    </div>
+
                   </div>
                 </div>
               </div>
@@ -889,7 +895,13 @@ export default function Home() {
               {/* Advanced Voice Settings */}
               <VoiceSettings
                 onSettingsChange={setVoiceSettings}
-                initialSettings={initialVoiceSettings || undefined}
+                initialSettings={{
+                  speed: voiceSettings.speed,
+                  emotionalRange: voiceSettings.emotionalRange,
+                  tone: voiceSettings.tone,
+                  intonation: voiceSettings.intonation,
+                  customInstructions: voiceSettings.customInstructions,
+                }}
               />
 
               {/* Voice Selection */}
