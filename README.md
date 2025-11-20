@@ -1,6 +1,6 @@
 # AI PDF-to-Audio Platform
 
-Transform your PDF documents into natural, human-like audio using advanced AI voice technology powered by OpenAI's TTS
+Transform your PDF documents into natural, human-like audio using advanced AI voice technology powered by OpenAI's TTS.
 
 ## Features
 
