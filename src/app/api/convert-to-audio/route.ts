@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 import { cleanAndProcessText, optimizeTextForSpeech, splitTextIntoChunks } from '@/lib/textProcessing';
 import { extractTextFromPdfBuffer } from '@/lib/pdfTextExtractor';
-import * as pdfjs from "pdfjs-dist";
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
 
 // Define the OpenAI voice type
 type OpenAIVoice = 'alloy' | 'ash' | 'coral' | 'echo' | 'fable' | 'nova' | 'onyx' | 'sage' | 'shimmer';
@@ -65,73 +63,104 @@ function langInstruction(lang: ReturnType<typeof detectLanguage>): string | unde
 const API_KEY = process.env.OPENAI_API_KEY;
 
 export async function POST(request: NextRequest) {
+  // Add at the very start of POST function
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+
   try {
     // Check if we have an API key
     if (!API_KEY) {
-      return NextResponse.json({ 
-        error: 'No OpenAI API key configured. Please add OPENAI_API_KEY to environment variables.' 
-      }, { status: 500 });
+      return NextResponse.json(
+        {
+          error:
+            "No OpenAI API key configured. Please add OPENAI_API_KEY to environment variables.",
+        },
+        { status: 500 }
+      );
     }
 
     const formData = await request.formData();
-    const file = formData.get('pdf') as File | null;
-    const inputText = formData.get('text') as string | null;
-    const selectedVoice = formData.get('voice') as string || 'fable';
-    const instructions = formData.get('instructions') as string || undefined;
-    const speedStr = formData.get('speed') as string;
+    const file = formData.get("pdf") as File | null;
+    const inputText = formData.get("text") as string | null;
+    const selectedVoice = (formData.get("voice") as string) || "fable";
+    const instructions = (formData.get("instructions") as string) || undefined;
+    const speedStr = formData.get("speed") as string;
     const speed = speedStr ? parseFloat(speedStr) : 1.0;
-    
+
     // Get individual settings for detailed logging (kept)
-    const emotionalRange = formData.get('emotionalRange') as string || 'Natural';
-    const tone = formData.get('tone') as string || 'Natural';
-    const intonation = formData.get('intonation') as string || 'Natural';
-    const customInstructions = formData.get('customInstructions') as string || undefined;
+    const emotionalRange =
+      (formData.get("emotionalRange") as string) || "Natural";
+    const tone = (formData.get("tone") as string) || "Natural";
+    const intonation = (formData.get("intonation") as string) || "Natural";
+    const customInstructions =
+      (formData.get("customInstructions") as string) || undefined;
 
     // Validate that either PDF or text is provided
     if (!file && !inputText) {
-      return NextResponse.json({ error: 'No PDF file or text provided' }, { status: 400 });
+      return NextResponse.json(
+        { error: "No PDF file or text provided" },
+        { status: 400 }
+      );
     }
 
     if (inputText && inputText.trim().length === 0) {
-      return NextResponse.json({ error: 'Text input is empty' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Text input is empty" },
+        { status: 400 }
+      );
     }
 
     if (inputText && inputText.length > 1000) {
-      return NextResponse.json({ error: 'Text input exceeds 1000 character limit' }, { status: 400 });
+      return NextResponse.json(
+        { error: "Text input exceeds 1000 character limit" },
+        { status: 400 }
+      );
     }
 
     // Validate voice option
-    const validVoices: OpenAIVoice[] = ['alloy', 'ash', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer'];
-    const voice = validVoices.includes(selectedVoice as OpenAIVoice) ? selectedVoice : 'fable';
-    
+    const validVoices: OpenAIVoice[] = [
+      "alloy",
+      "ash",
+      "coral",
+      "echo",
+      "fable",
+      "onyx",
+      "nova",
+      "sage",
+      "shimmer",
+    ];
+    const voice = validVoices.includes(selectedVoice as OpenAIVoice)
+      ? selectedVoice
+      : "fable";
+
     // LOG ALL PARAMETERS FOR VERIFICATION - DETAILED
-    console.log('═══════════════════════════════════════════════════');
-    console.log('🎙️  RECEIVED VOICE GENERATION PARAMETERS');
-    console.log('═══════════════════════════════════════════════════');
-    console.log('🎤 Voice Selection:');
-    console.log('   📝 Selected Voice:', selectedVoice);
-    console.log('   ✅ Validated Voice:', voice);
-    console.log('');
-    console.log('⚡ Speed:', speed);
-    console.log('');
-    console.log('🎭 Combined Instructions:', instructions || '(none)');
-    console.log('');
-    console.log('📋 Individual Voice Settings:');
-    console.log('   - Emotional Range:', emotionalRange);
-    console.log('   - Tone:', tone);
-    console.log('   - Intonation:', intonation);
-    console.log('   - Custom Instructions:', customInstructions || '(none)');
-    console.log('');
-    console.log('📄 Input Info:');
+    console.log("═══════════════════════════════════════════════════");
+    console.log("🎙️  RECEIVED VOICE GENERATION PARAMETERS");
+    console.log("═══════════════════════════════════════════════════");
+    console.log("🎤 Voice Selection:");
+    console.log("   📝 Selected Voice:", selectedVoice);
+    console.log("   ✅ Validated Voice:", voice);
+    console.log("");
+    console.log("⚡ Speed:", speed);
+    console.log("");
+    console.log("🎭 Combined Instructions:", instructions || "(none)");
+    console.log("");
+    console.log("📋 Individual Voice Settings:");
+    console.log("   - Emotional Range:", emotionalRange);
+    console.log("   - Tone:", tone);
+    console.log("   - Intonation:", intonation);
+    console.log("   - Custom Instructions:", customInstructions || "(none)");
+    console.log("");
+    console.log("📄 Input Info:");
     if (file) {
-      console.log('   - Type: PDF File');
-      console.log('   - Name:', file.name);
-      console.log('   - Size:', (file.size / 1024).toFixed(2), 'KB');
+      console.log("   - Type: PDF File");
+      console.log("   - Name:", file.name);
+      console.log("   - Size:", (file.size / 1024).toFixed(2), "KB");
     } else if (inputText) {
-      console.log('   - Type: Text Input');
-      console.log('   - Length:', inputText.length, 'characters');
+      console.log("   - Type: Text Input");
+      console.log("   - Length:", inputText.length, "characters");
     }
-    console.log('═══════════════════════════════════════════════════');
+    console.log("═══════════════════════════════════════════════════");
 
     try {
       const openai = new OpenAI({
@@ -140,7 +169,7 @@ export async function POST(request: NextRequest) {
 
       // Get text from PDF or use provided text
       let rawText: string;
-      
+
       if (file) {
         // Convert File to ArrayBuffer
         const arrayBuffer = await file.arrayBuffer();
@@ -150,19 +179,22 @@ export async function POST(request: NextRequest) {
         // Use provided text directly
         rawText = inputText.trim();
       } else {
-        return NextResponse.json({ error: 'No input provided' }, { status: 400 });
+        return NextResponse.json(
+          { error: "No input provided" },
+          { status: 400 }
+        );
       }
 
       if (!rawText || rawText.trim().length < 10) {
-        const errorMsg = file 
-          ? 'Could not extract readable text from PDF' 
-          : 'Text input is too short (minimum 10 characters)';
+        const errorMsg = file
+          ? "Could not extract readable text from PDF"
+          : "Text input is too short (minimum 10 characters)";
         return NextResponse.json({ error: errorMsg }, { status: 400 });
       }
 
       // Clean and process the text
       let processedText = cleanAndProcessText(rawText);
-      
+
       // Optimize for speech synthesis
       processedText = optimizeTextForSpeech(processedText);
 
@@ -177,32 +209,45 @@ export async function POST(request: NextRequest) {
       if (!finalInstructions || !finalInstructions.trim()) {
         const instructionParts: string[] = [];
         if (perDocLangInstruction) instructionParts.push(perDocLangInstruction);
-        if (emotionalRange && emotionalRange !== 'Natural') instructionParts.push(emotionalRange.toLowerCase());
-        if (tone && tone !== 'Natural') instructionParts.push(tone.toLowerCase());
-        if (intonation && intonation !== 'Natural') instructionParts.push(intonation.toLowerCase());
+        if (emotionalRange && emotionalRange !== "Natural")
+          instructionParts.push(emotionalRange.toLowerCase());
+        if (tone && tone !== "Natural")
+          instructionParts.push(tone.toLowerCase());
+        if (intonation && intonation !== "Natural")
+          instructionParts.push(intonation.toLowerCase());
         if (customInstructions) instructionParts.push(customInstructions);
-        finalInstructions = instructionParts.length > 0 ? instructionParts.join('. ') + '.' : undefined;
+        finalInstructions =
+          instructionParts.length > 0
+            ? instructionParts.join(". ") + "."
+            : undefined;
       } else {
         // Prepend detected language hint to provided instructions
-        finalInstructions = perDocLangInstruction ? `${perDocLangInstruction} ${finalInstructions}`.trim() : finalInstructions.trim();
+        finalInstructions = perDocLangInstruction
+          ? `${perDocLangInstruction} ${finalInstructions}`.trim()
+          : finalInstructions.trim();
       }
 
       console.log(`🈶 Dominant language detected: ${dominantLang}`);
 
       // Split into chunks if text is longer than 3800 characters (safe margin for 4096 limit)
       const MAX_CHUNK_SIZE = 3800;
-      const chunks = processedText.length > MAX_CHUNK_SIZE 
-        ? splitTextIntoChunks(processedText, MAX_CHUNK_SIZE)
-        : [{ text: processedText, page: 1, length: processedText.length }];
+      const chunks =
+        processedText.length > MAX_CHUNK_SIZE
+          ? splitTextIntoChunks(processedText, MAX_CHUNK_SIZE)
+          : [{ text: processedText, page: 1, length: processedText.length }];
 
       console.log(`📦 Number of chunks: ${chunks.length}`);
 
       // Generate audio for each chunk sequentially
       const audioChunks: Uint8Array[] = [];
-      
+
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        console.log(`\n🎙️  Processing chunk ${i + 1}/${chunks.length} (${chunk.length} characters)`);
+        console.log(
+          `\n🎙️  Processing chunk ${i + 1}/${chunks.length} (${
+            chunk.length
+          } characters)`
+        );
 
         // Generate speech using OpenAI TTS with advanced control
         const speechParams: any = {
@@ -218,23 +263,33 @@ export async function POST(request: NextRequest) {
         }
 
         // LOG THE FINAL PARAMETERS BEING SENT TO OPENAI
-        console.log('═══════════════════════════════════════════════════');
-        console.log(`🚀 SENDING CHUNK ${i + 1}/${chunks.length} TO OPENAI TTS API:`);
-        console.log('═══════════════════════════════════════════════════');
-        console.log('🤖 Model:', speechParams.model);
-        console.log('🎤 Voice:', speechParams.voice);
-        console.log('⚡ Speed:', speechParams.speed);
-        console.log('📝 Chunk Length:', speechParams.input.length, 'characters');
+        console.log("═══════════════════════════════════════════════════");
+        console.log(
+          `🚀 SENDING CHUNK ${i + 1}/${chunks.length} TO OPENAI TTS API:`
+        );
+        console.log("═══════════════════════════════════════════════════");
+        console.log("🤖 Model:", speechParams.model);
+        console.log("🎤 Voice:", speechParams.voice);
+        console.log("⚡ Speed:", speechParams.speed);
+        console.log(
+          "📝 Chunk Length:",
+          speechParams.input.length,
+          "characters"
+        );
         if (speechParams.instructions) {
-          console.log('📤 Instructions:', speechParams.instructions);
+          console.log("📤 Instructions:", speechParams.instructions);
         }
-        console.log('═══════════════════════════════════════════════════');
+        console.log("═══════════════════════════════════════════════════");
 
         const mp3 = await openai.audio.speech.create(speechParams);
         const chunkAudio = new Uint8Array(await mp3.arrayBuffer());
         audioChunks.push(chunkAudio);
-        
-        console.log(`✅ Chunk ${i + 1}/${chunks.length} generated: ${(chunkAudio.byteLength / 1024).toFixed(2)} KB`);
+
+        console.log(
+          `✅ Chunk ${i + 1}/${chunks.length} generated: ${(
+            chunkAudio.byteLength / 1024
+          ).toFixed(2)} KB`
+        );
       }
 
       // Concatenate all audio chunks into a single file
@@ -245,129 +300,177 @@ export async function POST(request: NextRequest) {
         finalAudio = audioChunks[0];
       } else {
         // Multiple chunks - concatenate MP3 files
-        const totalLength = audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+        const totalLength = audioChunks.reduce(
+          (sum, chunk) => sum + chunk.length,
+          0
+        );
         finalAudio = new Uint8Array(totalLength);
         let offset = 0;
         for (const chunk of audioChunks) {
           finalAudio.set(chunk, offset);
           offset += chunk.length;
         }
-        console.log(`\n✅ All chunks concatenated: ${chunks.length} chunks, ${(finalAudio.byteLength / 1024).toFixed(2)} KB total`);
+        console.log(
+          `\n✅ All chunks concatenated: ${chunks.length} chunks, ${(
+            finalAudio.byteLength / 1024
+          ).toFixed(2)} KB total`
+        );
       }
 
       const audioUint8 = finalAudio;
 
-      console.log('');
-      console.log('═══════════════════════════════════════════════════');
-      console.log('✅ SUCCESS! Audio Generated with Voice Settings');
-      console.log('═══════════════════════════════════════════════════');
-      console.log('📊 Total Audio Size:', (audioUint8.byteLength / 1024).toFixed(2), 'KB');
-      console.log('📦 Total Chunks:', chunks.length);
-      console.log('📝 Total Text Length:', processedText.length, 'characters');
-      console.log('🎤 Voice Used:', voice);
-      console.log('⚡ Speed:', speed);
-      console.log('🈶 Document language:', dominantLang);
+      console.log("");
+      console.log("═══════════════════════════════════════════════════");
+      console.log("✅ SUCCESS! Audio Generated with Voice Settings");
+      console.log("═══════════════════════════════════════════════════");
+      console.log(
+        "📊 Total Audio Size:",
+        (audioUint8.byteLength / 1024).toFixed(2),
+        "KB"
+      );
+      console.log("📦 Total Chunks:", chunks.length);
+      console.log("📝 Total Text Length:", processedText.length, "characters");
+      console.log("🎤 Voice Used:", voice);
+      console.log("⚡ Speed:", speed);
+      console.log("🈶 Document language:", dominantLang);
       if (finalInstructions) {
-        console.log('🎭 Voice Style Applied:', finalInstructions);
+        console.log("🎭 Voice Style Applied:", finalInstructions);
       } else {
-        console.log('🎭 Voice Style: Default voice characteristics');
+        console.log("🎭 Voice Style: Default voice characteristics");
       }
-      console.log('═══════════════════════════════════════════════════');
-      console.log('');
+      console.log("═══════════════════════════════════════════════════");
+      console.log("");
 
       // Return audio file as Uint8Array
       return new NextResponse(audioUint8 as any, {
         headers: {
-          'Content-Type': 'audio/mpeg',
-          'Content-Length': audioUint8.byteLength.toString(),
-          'Content-Disposition': 'attachment; filename="converted-audio.mp3"',
-          'Cache-Control': 'no-cache',
-          'X-Detected-Language': dominantLang || 'unknown',
-          'X-Text-Length': processedText.length.toString(),
+          "Content-Type": "audio/mpeg",
+          "Content-Length": audioUint8.byteLength.toString(),
+          "Content-Disposition": 'attachment; filename="converted-audio.mp3"',
+          "Cache-Control": "no-cache",
+          "X-Detected-Language": dominantLang || "unknown",
+          "X-Text-Length": processedText.length.toString(),
         },
       });
-
     } catch (error) {
-      console.error('❌ API call failed:', error);
+      console.error("❌ API call failed:", error);
       if (error instanceof Error) {
-        console.error('API Error Details:', {
+        console.error("API Error Details:", {
           name: error.name,
           message: error.message,
-          stack: error.stack
+          stack: error.stack,
         });
       }
       throw error;
     }
-
   } catch (error) {
-    console.error('❌ Error converting PDF to audio:', error);
-    
+    console.error("❌ Error converting PDF to audio:", error);
+
     // Log detailed error information
     if (error instanceof Error) {
-      console.error('Error name:', error.name);
-      console.error('Error message:', error.message);
-      console.error('Error stack:', error.stack);
-      
+      console.error("Error name:", error.name);
+      console.error("Error message:", error.message);
+      console.error("Error stack:", error.stack);
+
       const errorMessage = error.message.toLowerCase();
-      
+
       // API Key issues
-      if (errorMessage.includes('api key') || errorMessage.includes('unauthorized') || errorMessage.includes('401')) {
-        return NextResponse.json({ 
-          error: 'OpenAI API key not configured or invalid. Please check your OPENAI_API_KEY in environment variables.' 
-        }, { status: 401 });
+      if (
+        errorMessage.includes("api key") ||
+        errorMessage.includes("unauthorized") ||
+        errorMessage.includes("401")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "OpenAI API key not configured or invalid. Please check your OPENAI_API_KEY in environment variables.",
+          },
+          { status: 401 }
+        );
       }
-      
+
       // Quota and rate limiting (429 errors)
-      if (errorMessage.includes('quota') || 
-          errorMessage.includes('rate limit') || 
-          errorMessage.includes('too many requests') ||
-          errorMessage.includes('insufficient_quota') ||
-          errorMessage.includes('all api keys have exceeded') ||
-          errorMessage.includes('429')) {
-        return NextResponse.json({ 
-          error: 'All OpenAI API keys have exceeded their quota. Solutions: 1) Add billing to your OpenAI accounts at platform.openai.com/account/billing 2) Wait for quota reset 3) Try again later 4) Use smaller PDFs to reduce usage' 
-        }, { status: 429 });
+      if (
+        errorMessage.includes("quota") ||
+        errorMessage.includes("rate limit") ||
+        errorMessage.includes("too many requests") ||
+        errorMessage.includes("insufficient_quota") ||
+        errorMessage.includes("all api keys have exceeded") ||
+        errorMessage.includes("429")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "All OpenAI API keys have exceeded their quota. Solutions: 1) Add billing to your OpenAI accounts at platform.openai.com/account/billing 2) Wait for quota reset 3) Try again later 4) Use smaller PDFs to reduce usage",
+          },
+          { status: 429 }
+        );
       }
-      
+
       // Billing issues (402 errors)
-      if (errorMessage.includes('billing') || 
-          errorMessage.includes('payment') || 
-          errorMessage.includes('402')) {
-        return NextResponse.json({ 
-          error: 'OpenAI API billing issue. Please add a payment method at platform.openai.com/account/billing' 
-        }, { status: 402 });
+      if (
+        errorMessage.includes("billing") ||
+        errorMessage.includes("payment") ||
+        errorMessage.includes("402")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "OpenAI API billing issue. Please add a payment method at platform.openai.com/account/billing",
+          },
+          { status: 402 }
+        );
       }
-      
+
       // Model or service issues
-      if (errorMessage.includes('model') || errorMessage.includes('service') || errorMessage.includes('503')) {
-        return NextResponse.json({ 
-          error: 'OpenAI service temporarily unavailable. Please try again in a few minutes.' 
-        }, { status: 503 });
+      if (
+        errorMessage.includes("model") ||
+        errorMessage.includes("service") ||
+        errorMessage.includes("503")
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "OpenAI service temporarily unavailable. Please try again in a few minutes.",
+          },
+          { status: 503 }
+        );
       }
-      
+
       // PDF extraction errors (including worker errors)
-      if (errorMessage.includes('pdf') || 
-          errorMessage.includes('extract') || 
-          errorMessage.includes('text extraction') ||
-          errorMessage.includes('worker') ||
-          errorMessage.includes('pdf.worker') ||
-          errorMessage.includes('cannot find module')) {
-        return NextResponse.json({ 
-          error: `PDF text extraction failed: ${error.message}. Please ensure the PDF contains selectable text.` 
-        }, { status: 400 });
+      if (
+        errorMessage.includes("pdf") ||
+        errorMessage.includes("extract") ||
+        errorMessage.includes("text extraction") ||
+        errorMessage.includes("worker") ||
+        errorMessage.includes("pdf.worker") ||
+        errorMessage.includes("cannot find module")
+      ) {
+        return NextResponse.json(
+          {
+            error: `PDF text extraction failed: ${error.message}. Please ensure the PDF contains selectable text.`,
+          },
+          { status: 400 }
+        );
       }
-      
+
       // Return the actual error message for debugging
-      return NextResponse.json({ 
-        error: `Conversion failed: ${error.message}. Please check the server logs for more details.` 
-      }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: `Conversion failed: ${error.message}. Please check the server logs for more details.`,
+        },
+        { status: 500 }
+      );
     }
 
     // Generic error with more details
     const errorString = String(error);
-    console.error('Unknown error type:', errorString);
-    return NextResponse.json({ 
-      error: `Failed to convert to audio: ${errorString}. Please check your internet connection and try again.` 
-    }, { status: 500 });
+    console.error("Unknown error type:", errorString);
+    return NextResponse.json(
+      {
+        error: `Failed to convert to audio: ${errorString}. Please check your internet connection and try again.`,
+      },
+      { status: 500 }
+    );
   }
 }

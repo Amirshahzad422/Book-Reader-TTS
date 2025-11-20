@@ -1,9 +1,11 @@
+import type { NextConfig } from "next";
+//import webpack from "webpack";
+//import path from "path";
+
 const nextConfig: NextConfig = {
-  experimental: {
-    serverComponentsExternalPackages: ["pdfjs-dist"],
-    outputFileTracingIncludes: {
-      "/api/convert-to-audio": ["./node_modules/pdfjs-dist/**/*"],
-    },
+  serverExternalPackages: ["pdfjs-dist"],
+  outputFileTracingIncludes: {
+    "/api/convert-to-audio": ["./node_modules/pdfjs-dist/**/*"],
   },
   eslint: {
     ignoreDuringBuilds: true,
@@ -12,3 +14,5 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
 };
+
+export default nextConfig;
