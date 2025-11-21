@@ -3,6 +3,8 @@ import OpenAI from 'openai';
 import { cleanAndProcessText, optimizeTextForSpeech, splitTextIntoChunks } from '@/lib/textProcessing';
 import { extractTextFromPdfBuffer } from '@/lib/pdfTextExtractor';
 
+export const runtime = 'nodejs';
+
 // Define the OpenAI voice type
 type OpenAIVoice = 'alloy' | 'ash' | 'coral' | 'echo' | 'fable' | 'nova' | 'onyx' | 'sage' | 'shimmer';
 
@@ -63,10 +65,6 @@ function langInstruction(lang: ReturnType<typeof detectLanguage>): string | unde
 const API_KEY = process.env.OPENAI_API_KEY;
 
 export async function POST(request: NextRequest) {
-  // Add at the very start of POST function
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
-
   try {
     // Check if we have an API key
     if (!API_KEY) {

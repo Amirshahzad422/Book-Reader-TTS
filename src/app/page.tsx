@@ -552,21 +552,24 @@ export default function Home() {
         }
       } else {
         // Get detailed error from response
-        let errorData;
+        const errorText = await response.text();
+        let errorData: any = null;
         try {
-          errorData = await response.json();
-        } catch (jsonError) {
-          // If response is not JSON, get text
-          const textError = await response.text();
-          throw new Error(textError || `HTTP ${response.status}: ${response.statusText}`);
+          errorData = errorText ? JSON.parse(errorText) : null;
+        } catch {
+          // ignore JSON parse errors, will fall back to raw text
         }
 
-        const errorMessage = errorData?.error || `HTTP ${response.status}: ${response.statusText}`;
-        console.error('API Error Response:', {
+        const errorMessage =
+          errorData?.error ||
+          errorText ||
+          `HTTP ${response.status}: ${response.statusText}`;
+
+        console.error("API Error Response:", {
           status: response.status,
           statusText: response.statusText,
           error: errorMessage,
-          fullResponse: errorData
+          fullResponse: errorData ?? errorText,
         });
         throw new Error(errorMessage);
       }

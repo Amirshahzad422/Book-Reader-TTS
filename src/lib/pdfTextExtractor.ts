@@ -1,6 +1,5 @@
 const MIN_TEXT_LENGTH = 10;
 let pdfjsPromise: Promise<any> | null = null;
-const dynamicImport = new Function('specifier', 'return import(specifier);') as (specifier: string) => Promise<any>;
 
 export function normalizeExtracted(text: string): string {
   text = text
@@ -37,20 +36,33 @@ export function normalizeExtracted(text: string): string {
   return text.trim();
 }
 
-export async function extractTextFromPdfBuffer(buffer: ArrayBuffer): Promise<string> {
+async function loadPdfJsLegacy() {
   if (!pdfjsPromise) {
-    pdfjsPromise = dynamicImport('pdfjs-dist/legacy/build/pdf.mjs');
+    pdfjsPromise = (async () => {
+      try {
+        const req = eval('require') as NodeRequire;
+        const pdfjs = req('pdfjs-dist/legacy/build/pdf.js');
+        try {
+          if (pdfjs?.GlobalWorkerOptions) {
+            pdfjs.GlobalWorkerOptions.workerSrc = undefined;
+          }
+        } catch {
+          // ignore worker override errors
+        }
+        return pdfjs;
+      } catch (error) {
+        pdfjsPromise = null;
+        throw new Error(
+          `Failed to load pdfjs-dist legacy build. Details: ${(error as Error).message}`
+        );
+      }
+    })();
   }
+  return pdfjsPromise;
+}
 
-  let pdfjsLib: any;
-  try {
-    pdfjsLib = await pdfjsPromise;
-  } catch (error) {
-    pdfjsPromise = null;
-    throw new Error(
-      `Failed to load pdfjs-dist. Please reinstall the dependency. Details: ${(error as Error).message}`
-    );
-  }
+export async function extractTextFromPdfBuffer(buffer: ArrayBuffer): Promise<string> {
+  const pdfjsLib = await loadPdfJsLegacy();
 
   const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
   const doc = await loadingTask.promise;
