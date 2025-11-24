@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
       case "subscription_cancelled":
       case "subscription_expired":
-      case "subscription_paused":
+      //case "subscription_paused":
       case "subscription_payment_failed":
         await handleSubscriptionInactive(event);
         break;
