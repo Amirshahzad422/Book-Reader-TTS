@@ -7,7 +7,7 @@ import { FaCheck, FaTimes, FaArrowLeft } from "react-icons/fa";
 import { useRouter } from "next/navigation";
 
 export default function PricingPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession(); 
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -54,6 +54,11 @@ export default function PricingPage() {
       return;
     }
 
+    // Wait for session to load
+    if (status === "loading") {
+      return;
+    }
+
     if (!session) {
       router.push("/?auth=login");
       return;
@@ -84,45 +89,20 @@ export default function PricingPage() {
       return;
     }
 
-    // Handle upgrade - Open LemonSqueezy checkout
+    // Handle upgrade - Direct redirect to checkout
     try {
-      // Load LemonSqueezy.js if not already loaded
-      if (!(window as any).LemonSqueezy) {
-        const script = document.createElement("script");
-        script.src = "https://app.lemonsqueezy.com/js/lemon.js";
-        script.defer = true;
-        document.head.appendChild(script);
-
-        await new Promise((resolve) => {
-          script.onload = resolve;
-        });
-      }
-
-      // Initialize LemonSqueezy
-      const LemonSqueezy = (window as any).LemonSqueezy;
-      LemonSqueezy.Setup({
-        eventHandler: (event: any) => {
-          if (event === "Checkout.Success") {
-            alert("Payment successful! Your account will be upgraded shortly.");
-            setTimeout(() => {
-              router.refresh();
-            }, 2000);
-          }
-        },
-      });
-
-      // Open checkout with user email pre-filled
+      // Build checkout URL with pre-filled data
       const checkoutUrl = `${
         process.env.NEXT_PUBLIC_LEMONSQUEEZY_CHECKOUT_URL
       }?checkout[email]=${encodeURIComponent(
         session.user.email || ""
       )}&checkout[custom][user_id]=${session.user.id || ""}`;
 
-      LemonSqueezy.Url.Open(checkoutUrl);
+      // Direct redirect instead of using LemonSqueezy.js
+      window.location.href = checkoutUrl;
     } catch (error) {
       console.error("Checkout error:", error);
       alert("Failed to open checkout. Please try again.");
-    } finally {
       setIsLoading(false);
     }
   };
@@ -223,9 +203,15 @@ export default function PricingPage() {
                       : ""
                   }`}
                   variant={plan.highlighted ? "default" : "outline"}
-                  disabled={plan.name === "Starter" || isLoading}
+                  disabled={
+                    plan.name === "Starter" || isLoading || status === "loading"
+                  }
                 >
-                  {isLoading ? "Loading..." : plan.cta}
+                  {status === "loading"
+                    ? "Loading..."
+                    : isLoading
+                    ? "Processing..."
+                    : plan.cta}
                 </Button>
               </div>
             </div>
